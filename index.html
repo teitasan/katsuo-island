@@ -1206,8 +1206,7 @@ const PORT={
   r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
   out:110,             // 出港で船着場からここまで離れたら操船を返す
-  view:{x:-70, y:-10}, // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
-  camEase:0.004        // カメラの寄り。小さいほど速く寄る（1秒あたりの残り率）
+  view:{x:-70, y:-10}  // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
 };
 /* 海の濃さは港からの距離の「指数」で増やす。上限のあるランプだと、タンクが
    その上限に届いた時点で一番おいしい漁場が動かなくなる。一定距離ごとに倍、
@@ -1768,12 +1767,14 @@ function updateVoyage(dt){
     if(S.phase==='departing' && dockDist()>PORT.out){ B.sp=0; S.phase='sea'; }
   }
 }
-/* 0=船に貼りつく 1=島を見る。入港で島へ寄り、出港で船へ戻る。
-   航海中は必ず 0 なのでカメラが船から遅れることはない */
+/* 0=船に貼りつく 1=島を見る。
+   時間で補間せず、点線の円のどこに船が居るかをそのまま使う。
+   円の縁で0、船着場で1。つまり船が円の中を動いている間だけカメラが動き、
+   速く入れば速く寄る。航海中は必ず0なのでカメラが船から遅れることはない */
 function updateCam(dt){
-  const want = (S.phase==='port'||S.phase==='docking') ? 1 : 0;
-  S.camK += (want-S.camK)*(1-Math.pow(PORT.camEase, dt));
-  if(Math.abs(want-S.camK)<0.001) S.camK=want;
+  if(S.phase==='sea'){ S.camK=0; return; }
+  if(S.phase==='port'){ S.camK=1; return; }      // 着岸は2px手前で止まるので、港では締めておく
+  S.camK = clamp(1-dockDist()/PORT.r, 0, 1);
 }
 function camPos(){
   const B=S.boat, k=S.camK;
@@ -2579,7 +2580,7 @@ const scrResult=document.getElementById('result'), promptEl=document.getElementB
 /* 1回の航海の仕切り直し。所持金・船・強化は永続なので触らない */
 function reset(){
   S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
-  S.hold=0; S.dry=false; S.landed=null; S.camK=(S.phase==='port'||S.phase==='docking')?1:0;
+  S.hold=0; S.dry=false; S.landed=null; S.camK=S.phase==='sea'?0:1;
   S.schools.length=0; S.chests.length=0; S.crew.length=0;
   S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;

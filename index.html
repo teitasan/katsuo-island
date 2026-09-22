@@ -1943,17 +1943,15 @@ function initPatterns(){
   topGrad.addColorStop(.55,'rgba(6,40,62,0)');
   topGrad.addColorStop(1,'rgba(2,14,24,.22)');
 }
-/* カメラが船から離れる（入港中）と画面の外側がはみ出すので、
-   海はその余白ぶんまで広く塗る。タイルは64pxなので余白も64の倍数にする */
-const SEA_PAD=256;
+/* 揺れたぶんの余白まで塗る。タイルは64pxなので余白も64の倍数にする */
+const SEA_PAD=64;
 function drawSea(){
-  const B=S.boat;
   ctx.save();
-  ctx.translate(-(((B.x*.55)%64)+64)%64, -(((B.y*.55)%64)+64)%64);
+  ctx.translate(-(((camX*.55)%64)+64)%64, -(((camY*.55)%64)+64)%64);
   ctx.fillStyle=patDeep; ctx.fillRect(-SEA_PAD,-SEA_PAD,VW+64+SEA_PAD*2,VH+64+SEA_PAD*2);
   ctx.restore();
   ctx.save();
-  const dx=B.x-S.t*8, dy=B.y-S.t*2.5;
+  const dx=camX-S.t*8, dy=camY-S.t*2.5;
   ctx.translate(-((dx%64)+64)%64, -((dy%64)+64)%64);
   ctx.fillStyle=patSurf; ctx.fillRect(-SEA_PAD,-SEA_PAD,VW+64+SEA_PAD*2,VH+64+SEA_PAD*2);
   ctx.restore();
@@ -1961,7 +1959,7 @@ function drawSea(){
 }
 /* 港。海の上に1枚置くだけ。世界の原点に船着場が来るよう左上を逆算する */
 function drawPort(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   const o=portOrigin();
   const x=o.x+ox, y=o.y+oy;
   if(x>VW||y>VH||x+PORT_W<0||y+PORT_H<0) return;
@@ -1994,13 +1992,13 @@ function drawSpots(){
 function drawPortRing(){
   if(S.phase==='port'||!portRing) return;
   const B=S.boat, r=PORT.r, dk=dockPos();
-  const x=dk.x-r-2+(VW/2-B.x), y=dk.y-r-2+(VH/2-B.y);
+  const x=dk.x-r-2+(VW/2-camX), y=dk.y-r-2+(VH/2-camY);
   if(x>VW||y>VH||x+portRing.width<0||y+portRing.height<0) return;
   ctx.drawImage(portRing, x|0, y|0);
 }
 function drawPortArrow(){
   if(S.phase!=='sea') return;
-  const B=S.boat, sx=VW/2-(B.x-PORT.x), sy=VH/2-(B.y-PORT.y);
+  const B=S.boat, sx=VW/2-(camX-PORT.x), sy=VH/2-(camY-PORT.y);
   const m=26;
   if(sx>m && sx<VW-m && sy>m && sy<VH-m) return;     // 港が見えているなら出さない
   const a=Math.atan2(PORT.y-B.y, PORT.x-B.x);
@@ -2025,6 +2023,9 @@ function drawPortArrow(){
   for(let d=-1;d<=1;d++) for(let e=-1;e<=1;e++) ctx.fillText(s2, tx+d, ty+e);
   ctx.fillStyle='#f2b32c'; ctx.fillText(s2, tx, ty);
 }
+/* すべてのワールド描画の原点。航海中は船と一致し、入港中だけ島へずれる。
+   ここを船のままにしておくと、カメラがずれた側の端が画面外と判定されて消える */
+let camX=0, camY=0;
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
    画面を粗い升目に切って、1升に DENS_CAP 匹より多くは描かない。
@@ -2034,7 +2035,7 @@ const DENS_CELL=6, DENS_CAP=2;
 const DENS_W=Math.ceil((VW+18)/DENS_CELL)+1, DENS_H=Math.ceil((VH+18)/DENS_CELL)+1;
 const densGrid=new Uint8Array(DENS_W*DENS_H);
 function drawSchools(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   fishDrawn=0;
   densGrid.fill(0);
   const k=1/TAU*ANG;
@@ -2058,7 +2059,7 @@ function drawSchools(){
   }
 }
 function drawChests(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   for(const c of S.chests){
     const x=Math.round(c.x+ox), y=Math.round(c.y+oy+Math.sin(c.ph)*1.5);
     if(x<-30||x>VW+30||y<-30||y>VH+30) continue;
@@ -2069,7 +2070,7 @@ function drawChests(){
   }
 }
 function drawWake(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   for(const w of S.wake){
     const u=w.t/1.1;
     ctx.globalAlpha=(1-u)*.5;
@@ -2079,7 +2080,7 @@ function drawWake(){
   ctx.globalAlpha=1;
 }
 function drawGulls(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   for(const s of S.schools){
     const gs=s.gulls; if(!gs) continue;
     const live=Math.ceil(gs.length*s.alive/s.n0);   // 魚が減ると鳥も減っていく
@@ -2101,7 +2102,7 @@ function drawGulls(){
   }
 }
 function drawRings(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   ctx.strokeStyle='#dff0f6'; ctx.lineWidth=1;
   for(const r of S.rings){
     const u=r.t/.36, rr=2+u*8;
@@ -2117,7 +2118,7 @@ function drawFisher(fm){
 }
 function drawBoat(){
   const b=boats[S.up.hull-1], B=S.boat;
-  const sx=Math.round(VW/2), sy=Math.round(VH/2)+bobPx;
+  const sx=Math.round(VW/2+(B.x-camX)), sy=Math.round(VH/2+(B.y-camY))+bobPx;
   ctx.globalAlpha=.32; ctx.fillStyle='#04202f';
   ctx.beginPath(); ctx.ellipse(sx,sy+5,b.len/2+7,7,0,0,TAU); ctx.fill();
   ctx.globalAlpha=1;
@@ -2138,7 +2139,7 @@ function drawBoat(){
   }
 }
 function drawSpray(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   for(const s of S.spray){
     const u=s.t/s.life;
     ctx.globalAlpha=(1-u)*(s.big?1:.8);
@@ -2149,7 +2150,7 @@ function drawSpray(){
   ctx.globalAlpha=1;
 }
 function drawBoil(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   ctx.lineWidth=1;
   for(const b of S.boil){
     const u=b.t/b.life, x=Math.round(b.x+ox), y=Math.round(b.y+oy);
@@ -2167,7 +2168,7 @@ function drawBoil(){
 }
 function drawLines(){
   if(netGear()) return;                       // 網のときは竿を出さない
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   const by0=VH/2+bobPx, HULL_BOT=4;
   for(const fm of S.crew){
     if(fm.pose===1) continue;
@@ -2233,7 +2234,7 @@ function drawStick(){
 }
 function drawTrawl(){
   if(S.gear!=='trawl') return;
-  const B=S.boat, T=S.trawl, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, T=S.trawl, ox=VW/2-camX, oy=VH/2-camY;
   const ca=Math.cos(T.hd), sa=Math.sin(T.hd);
   const hd2=TR.depth*0.5;
   const P=(lx,ly)=>[T.x+lx*ca-ly*sa+ox, T.y+lx*sa+ly*ca+oy+bobPx];
@@ -2289,7 +2290,7 @@ function drawTrawl(){
 }
 function drawNet(){
   if(S.gear!=='seine') return;
-  const B=S.boat, N=S.net, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, N=S.net, ox=VW/2-camX, oy=VH/2-camY;
   const cx=VW/2, cy=VH/2+bobPx, R=netR(), Ry=R*NET.flat;
   if(!navBoost()){
     const pulling=N.phase==='pull';
@@ -2338,7 +2339,7 @@ function drawNet(){
   }
 }
 function drawPops(){
-  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
   for(const p of S.pops){
     const u=p.t/.55, k=p.fv?2:1;
     ctx.globalAlpha=Math.min(1, u<.12 ? u/.12 : (1-u)*(1-u)*1.4);
@@ -2376,10 +2377,7 @@ function draw(){
     const m=S.shake*S.shake*3.4;
     sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
   }
-  /* 各描画は「船が画面中央」で座標を出している。カメラをずらすぶんは
-     ワールド描画をまとめて平行移動して吸収する（画素がにじまないよう整数で） */
-  const B=S.boat, cam=camPos();
-  sx+=Math.round(B.x-cam.x); sy+=Math.round(B.y-cam.y);
+  const cam=camPos(); camX=cam.x; camY=cam.y;
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();

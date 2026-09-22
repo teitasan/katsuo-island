@@ -71,11 +71,17 @@
     padding:.35em .8em .4em; border-radius:2px}
   .clock .k{font-size:.72em; letter-spacing:.22em; color:var(--dim)}
   .clock .v{font-size:1.7em; font-weight:700; letter-spacing:.02em}
-  .clock .fuel{display:inline-block; width:5.4em; height:.6em; border:1px solid var(--line2);
-    background:rgba(3,18,29,.9); border-radius:1px; overflow:hidden; vertical-align:middle}
+  .clock .fuel{position:relative; display:inline-block; width:8em; height:.75em;
+    border:1px solid var(--line2); background:rgba(3,18,29,.9); border-radius:1px;
+    overflow:hidden; vertical-align:middle}
   .clock .fuel i{display:block; height:100%; width:100%;
     background:linear-gradient(90deg,var(--kelp),var(--gold)); transition:width .2s linear}
   .clock.warn .fuel i{background:linear-gradient(90deg,#ff8b6a,#e0332c)}
+  /* 帰港に要るぶんの目盛り。ここを割ったら港へ戻れない */
+  .clock .fuel u{position:absolute; top:-1px; bottom:-1px; width:2px; margin-left:-1px;
+    background:var(--foam); box-shadow:0 0 0 1px rgba(3,18,29,.8)}
+  .clock .fuel u[hidden]{display:none}
+  .clock.warn .fuel u{background:#ffd0a0}
   .clock.warn .v{color:#ff8b6a}
   .clock.warn{border-left-color:#ff8b6a}
 
@@ -345,8 +351,7 @@
       <div class="topbar">
         <div class="clock" id="clock">
           <span class="k" id="lblTime">ネンリョウ</span>
-          <span class="fuel"><i id="fuelfill"></i></span>
-          <span class="v num" id="time">0km</span>
+          <span class="fuel"><i id="fuelfill"></i><u id="fuelhome"></u></span>
         </div>
         <div class="catch">
           <span class="k" id="lblCatch">ツミニ</span>
@@ -2032,13 +2037,6 @@ function drawPortArrow(){
   ctx.fillStyle='#f2b32c';
   ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(-5,-5); ctx.lineTo(-2,0); ctx.lineTo(-5,5); ctx.closePath(); ctx.fill();
   ctx.restore();
-  const km=portDist()*M_PER_PX;
-  const s2=fmtDist(km);
-  ctx.font='6px "M PLUS 1 Code",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  const tx=clamp(px0, 22, VW-22)|0, ty=clamp(py0+(py0<cy?11:-11), top+6, bot-4)|0;
-  ctx.fillStyle='#03121d';
-  for(let d=-1;d<=1;d++) for(let e=-1;e<=1;e++) ctx.fillText(s2, tx+d, ty+e);
-  ctx.fillStyle='#f2b32c'; ctx.fillText(s2, tx, ty);
 }
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
@@ -2498,7 +2496,7 @@ function drawRadar(){
 /* ================= HUD ================= */
 const frameEl=document.getElementById('frame');
 const hud=document.getElementById('hud');
-const elTime=document.getElementById('time'), elClock=document.getElementById('clock');
+const elClock=document.getElementById('clock');
 const elCatchUnit=document.getElementById('lblCatchUnit');
 const elScore=document.getElementById('score'), elFill=document.getElementById('lvfill');
 const elLvNum=document.getElementById('lvnum'), elStats=document.getElementById('stats');
@@ -2534,7 +2532,7 @@ const elCatch=document.querySelector('.catch'), elFever=document.getElementById(
 const elFvBadge=document.getElementById('fvbadge'), elFvBar=document.getElementById('fvbar');
 const elFvBig=document.getElementById('fvbig');
 const elFvRound=document.getElementById('fvround');
-const elFuelFill=document.getElementById('fuelfill');
+const elFuelFill=document.getElementById('fuelfill'), elFuelHome=document.getElementById('fuelhome');
 function updateHUD(){
   elScore.style.transform = S.pop>0.01 ? 'scale('+(1+0.26*S.pop)+')' : '';
   const playing=S.phase==='sea';
@@ -2553,10 +2551,12 @@ function updateHUD(){
   }
   const fu=clamp(S.fuel/Math.max(1,fuelMax()),0,1);
   elFuelFill.style.width=(fu*100).toFixed(1)+'%';
-  /* 残量は % ではなく「あと何 km 走れるか」。港の矢印に出ている距離と
-     同じ単位にしてあるので、帰れるかどうかを見比べるだけで判断できる */
-  setTxt(elTime, fmtDist(Math.max(0,S.fuel)*M_PER_PX));
-  elClock.classList.toggle('warn', S.fuel*M_PER_PX < portDist()*M_PER_PX*1.15);
+  /* 数字は出さない。かわりに「帰港に要るぶん」をゲージ上の目盛りで示す。
+     残量がこの目盛りを割ったら港へ戻れない＝ゲージが赤くなる */
+  const home=clamp(portDist()*FUEL.perPx/Math.max(1,fuelMax()),0,1);
+  elFuelHome.hidden = S.phase!=='sea';
+  elFuelHome.style.left=(home*100).toFixed(1)+'%';
+  elClock.classList.toggle('warn', S.phase==='sea' && fu < home*1.15);
   setTxt(elScore, fmt(S.hold));
   /* 強化が run から消えたので、このバーは今なにも指していない（HTML側で畳んである） */
   UPG_IDS.forEach(id=>{

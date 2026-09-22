@@ -76,7 +76,6 @@
   .clock .fuel i{display:block; height:100%; width:100%;
     background:linear-gradient(90deg,var(--kelp),var(--gold)); transition:width .2s linear}
   .clock.warn .fuel i{background:linear-gradient(90deg,#ff8b6a,#e0332c)}
-  .catch.full{background:linear-gradient(180deg,#8d8779,#5a564c)}
   .clock.warn .v{color:#ff8b6a}
   .clock.warn{border-left-color:#ff8b6a}
 
@@ -345,11 +344,11 @@
         <div class="clock" id="clock">
           <span class="k" id="lblTime">ネンリョウ</span>
           <span class="fuel"><i id="fuelfill"></i></span>
-          <span class="v num" id="time">100%</span>
+          <span class="v num" id="time">0km</span>
         </div>
         <div class="catch">
           <span class="k" id="lblCatch">ツミニ</span>
-          <span class="v disp num" id="score">0</span><span class="u" id="lblCatchUnit">/ 200</span>
+          <span class="v disp num" id="score">0</span><span class="u" id="lblCatchUnit">本</span>
         </div>
       </div>
 
@@ -450,7 +449,7 @@ const STR={
 ja:{
  'title.h1a':'カツオ','title.h1b':'島','title.sub':'',
  'title.tap':'動かして出港','title.best':'自己ベスト {n}本',
- 'hud.time':'ネンリョウ','hud.catch':'ツミニ','hud.catchUnit':'','hud.next':'NEXT',
+ 'hud.time':'コウゾク','hud.catch':'ツミニ','hud.catchUnit':'本','hud.next':'NEXT',
  'hud.fever':'入れ食い','hud.round':'{n}連',
  'pick.eyebrow':'タイリョウ','pick.head':'どれを積む？',
  'up.crew.name':'漁師','up.crew.short':'漁師','up.crew.fl':'漁師が3人増える<br>釣り座が空くまで待機',
@@ -481,7 +480,7 @@ ja:{
 en:{
  'title.h1a':'KATSUO','title.h1b':'ISLE','title.sub':'',
  'title.tap':'Move to cast off','title.best':'BEST {n}',
- 'hud.time':'FUEL','hud.catch':'HOLD','hud.catchUnit':'','hud.next':'NEXT',
+ 'hud.time':'RANGE','hud.catch':'HOLD','hud.catchUnit':'','hud.next':'NEXT',
  'hud.fever':'ON FIRE','hud.round':'CHAIN {n}',
  'pick.eyebrow':'BIG CATCH','pick.head':'What comes aboard?',
  'up.crew.name':'Crew','up.crew.short':'Crew','up.crew.fl':'Three more hands<br>They stand by if no berth is free',
@@ -1162,22 +1161,28 @@ const SEA={
                        // これを大きくしすぎると「沖が有利」が一生体感できない
   countMax:2.0,        // 遠洋での「群れの数」の倍率
   sizeMax:3.4,         // 遠洋での「群れの大きさ」の倍率
+  curve:2.0,           // 濃さの立ち上がり。2だと港の近くが平ら。1で直線、0.6でいきなり立つ
   tightMax:0.62,       // 遠洋での群れの半径。小さいほど密で、竿の下の魚が増える＝漁獲効率
   portClear:420        // 港からこの距離までは魚を湧かせない。岸壁の真下に群れが居ると、
                        // それを追っているだけで港に吸い込まれて漁が終わってしまう
 };
+/* 燃料は時間ではなく「走った距離」で減る。単位はそのまま px なので、
+   燃料の残り = あと何 px 走れるか。HUD には港までの距離と同じ km で出している。
+   止まっている間は減らないので、群れの上で粘るのは無料。遠くへ出る判断だけに燃料が効く */
 const FUEL={
-  drain:1.0,           // 毎秒の消費。仕様どおり時間経過だけで減らす
-  boostMul:1.0,        // 倍速中の追加倍率。1でちょうど仕様どおり
+  perPx:1.0,           // 1px 走るのに使う燃料。1 なら燃料＝そのまま航続距離(px)
+  boostPenalty:0.8,    // 倍速のときの割増。0.8 なら同じ距離に1.8倍食う
+  idle:0,              // 停まっていても減る分(毎秒)。0で完全に距離だけ
   dryPenalty:0.5       // 燃料切れで帰ったときの水揚げ倍率
 };
 const YEN=50;          // カツオ1本の値段
 /* 船。art は既存の船体グラフィック(1〜5)のどれを使うか。
    seats は乗員上限で、その船に描かれている釣り座の数を超えては置けない */
+/* fuel は航続距離(px)。M_PER_PX=2 なので 4000px = 8km */
 const SHIPS=[
-  {id:'small',  art:1, seats:8,  hold:500,  fuel:100, price:0},
-  {id:'medium', art:3, seats:18, hold:2000, fuel:220, price:80000},
-  {id:'large',  art:5, seats:32, hold:8000, fuel:420, price:700000}
+  {id:'small',  art:1, seats:8,  fuel:4000,  price:0},
+  {id:'medium', art:3, seats:18, fuel:9000,  price:80000},
+  {id:'large',  art:5, seats:32, fuel:18000, price:700000}
 ];
 /* 港での値段。n 段目の値段 = base * mul^n */
 const PRICE={
@@ -1192,8 +1197,6 @@ const TANK_STEP=0.35;  // 燃料タンク1段で最大燃料が何割増える�
 const TANK_MAX=8;
 
 function ship(){ return SHIPS[S.shipIdx]; }
-function holdMax(){ return ship().hold; }
-function holdFull(){ return S.hold>=holdMax(); }
 function fuelMax(){ return Math.round(ship().fuel*(1+TANK_STEP*(S.up.tank||0))); }
 function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
 /* 0=近海 1=遠洋。港からの距離だけで決まる */
@@ -1243,7 +1246,7 @@ function valOf(id,u){
       r={n: v<100? v.toFixed(1) : fmt(Math.round(v)), u:t('unit.rate')}; break; }
     case 'engine': r={n:(stat.speed(u)*0.25).toFixed(1), u:t('unit.knot')}; break;
     case 'sonar':  r={n:'+'+Math.round((stat.sonar(u)/SONAR_BASE-1)*100)+'%', u:''}; break;
-    case 'tank':   r={n:String(Math.round(ship().fuel*(1+TANK_STEP*(u.tank||0)))), u:''}; break;
+    case 'tank':   r={n:fmtDist(Math.round(ship().fuel*(1+TANK_STEP*(u.tank||0)))*M_PER_PX), u:''}; break;
     case 'lure':   r = u.lure===0 ? {n:t('unit.none'), u:''}
                      : {n:'+'+Math.round((stat.lureR(u)/LURE_BASE-1)*100)+'%', u:''}; break;
   }
@@ -1326,7 +1329,7 @@ function manageWorld(dt){
   let guard=0;
   const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
   while(S.schools.length<target && S.totalFish<cap && guard++<6){
-    const q=p*p;   // 沖ほど一気に伸ばす。近海は小さい群れを次々に乗り換えるテンポを優先
+    const q=Math.pow(p, SEA.curve);   // 港からの距離に対する濃さの立ち上がり
     const n=Math.round(rnd(50,150)*(1+(SEA.sizeMax-1)*q)*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
     // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
     // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
@@ -1555,7 +1558,6 @@ function updateFishing(dt){
   }
   S.inRange=up.length+dn.length;                // 竿の下に今いる魚。入れ食いの判定に使う
   if(eff<=0.001) return;                        // 飛ばしすぎ。竿は上がっている
-  if(holdFull()) return;                        // 船倉が一杯。これ以上は積めない
   for(const fm of S.crew){
     if(fm.pose===1){ fm.pt-=dt; if(fm.pt<=0){ fm.pose=0; } }
     fm.cd-=dt;
@@ -1662,7 +1664,9 @@ function dockPos(){ return {x:PORT.x+PORT.dock.x, y:PORT.y+PORT.dock.y}; }
 
 function updateVoyage(dt){
   if(S.phase==='sea'){
-    S.fuel-=FUEL.drain*dt*(navBoost()?FUEL.boostMul:1);
+    const sp=S.boat.sp, cruise=Math.max(1,stat.speed());
+    const over=clamp((sp/cruise-1)/(NAV_BOOST-1),0,1);      // 0=巡航 1=倍速
+    S.fuel-=sp*dt*FUEL.perPx*(1+FUEL.boostPenalty*over) + FUEL.idle*dt;
     if(S.fuel<=0){                       // 燃料切れ。沈めも殺しもせず、港へ戻して半値にする
       S.fuel=0; S.dry=true;
       const d=Math.max(1,portDist());
@@ -2396,11 +2400,11 @@ function updateHUD(){
   }
   const fu=clamp(S.fuel/Math.max(1,fuelMax()),0,1);
   elFuelFill.style.width=(fu*100).toFixed(1)+'%';
-  setTxt(elTime, Math.round(fu*100)+'%');
-  elClock.classList.toggle('warn', fu<=0.25);
+  /* 残量は % ではなく「あと何 km 走れるか」。港の矢印に出ている距離と
+     同じ単位にしてあるので、帰れるかどうかを見比べるだけで判断できる */
+  setTxt(elTime, fmtDist(Math.max(0,S.fuel)*M_PER_PX));
+  elClock.classList.toggle('warn', S.fuel*M_PER_PX < portDist()*M_PER_PX*1.15);
   setTxt(elScore, fmt(S.hold));
-  setTxt(elCatchUnit, '/ '+fmt(holdMax()));
-  elCatch.classList.toggle('full', holdFull());
   /* 強化が run から消えたので、このバーは今なにも指していない（HTML側で畳んである） */
   UPG_IDS.forEach(id=>{
     const u=UPG_BY[id];
@@ -2621,8 +2625,8 @@ function paintPort(){
   elPLog.innerHTML = L
     ? ('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>'
        + (L.dry?'\n<u>燃料切れ。半値でしか買ってもらえなかった</u>':'')
-       + '\n給油 <b>'+fuelMax()+'</b>  船倉 <b>'+fmt(holdMax())+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>')
-    : ('船倉 <b>'+fmt(holdMax())+'</b>  燃料 <b>'+fuelMax()+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>');
+       + '\n満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>')
+    : ('満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>');
   document.querySelectorAll('.psign').forEach(b=>b.classList.toggle('on', b.dataset.shop===shopOpen));
   if(!shopOpen){ elPShop.hidden=true; return; }
   elPShop.hidden=false; elPShop.innerHTML='';
@@ -2645,7 +2649,7 @@ function paintGearShop(ids){
     const cost=costOf(id);
     const a=valOf(id,S.up), b2=valOf(id,nextUp(id));
     let sub = id==='crew' ? (S.up.crew+' / '+stat.seats()+'人')
-            : id==='tank' ? ('最大燃料 '+fuelMax()+' → '+Math.round(ship().fuel*(1+TANK_STEP*((S.up.tank||0)+1))))
+            : id==='tank' ? ('航続 '+fmtDist(fuelMax()*M_PER_PX)+' → '+fmtDist(Math.round(ship().fuel*(1+TANK_STEP*((S.up.tank||0)+1)))*M_PER_PX))
             : (a.n+a.u+' → '+b2.n+b2.u);
     if(id==='crew' && maxed) sub='釣り座が埋まっている。船を替えるまで雇えない';
     const ok=!maxed && S.money>=cost;
@@ -2657,7 +2661,7 @@ function paintGearShop(ids){
 function paintShips(){
   SHIPS.forEach((sh,i)=>{
     const own=i<=S.shipIdx;
-    const sub='乗員 '+sh.seats+'  船倉 '+fmt(sh.hold)+'  燃料 '+sh.fuel;
+    const sub='乗員 '+sh.seats+'人　航続 '+fmtDist(sh.fuel*M_PER_PX);
     const ok=!own && S.money>=sh.price && i===S.shipIdx+1;
     shopRow(null, SHIP_NAME[i], sub, own?'所有':yen(sh.price), ok, ()=>{
       S.money-=sh.price; setShip(i); saveGame(); sfxChest(); paintPort();
@@ -2794,7 +2798,7 @@ function applyLang(){
   const set=(id,k)=>{ const e=document.getElementById(id); if(e) e.textContent=t(k); };
   set('h1a','title.h1a'); set('h1b','title.h1b'); set('h1sub','title.sub');
   set('tapHint','title.tap'); set('retry','res.retry');
-  set('lblTime','hud.time'); set('lblCatch','hud.catch');
+  set('lblTime','hud.time'); set('lblCatch','hud.catch'); set('lblCatchUnit','hud.catchUnit');
   set('lvlabel','hud.next');
   set('fvlabel','hud.fever'); set('fvbig','hud.fever');
   elFvRound.textContent=t('hud.round',{n:Math.max(1,S.fvRound)});

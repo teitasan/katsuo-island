@@ -1155,13 +1155,16 @@ const PORT={
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
   out:230              // 出港でここまで離れたら操船を返す
 };
+/* 海の濃さは港からの距離の「指数」で増やす。上限のあるランプだと、タンクが
+   その上限に届いた時点で一番おいしい漁場が動かなくなる。一定距離ごとに倍、
+   にしておくと、最適な漁場が 満タン/2 に比例して無段階に沖へ滑っていく。
+     いちばん稼げる距離 ≈ 満タン/2 − double/ln2
+   小型の素（満タン4000px）だと負の値、つまり近海が最適。タンクと船を伸ばすほど外へ出る。 */
 const SEA={
-  near:500,            // ここより内側は近海。倍率1
-  far:4000,            // ここで倍率が上限になる。小型船の航続がおよそ1500〜2500pxなので、
-                       // これを大きくしすぎると「沖が有利」が一生体感できない
-  countMax:2.0,        // 遠洋での「群れの数」の倍率
-  sizeMax:3.4,         // 遠洋での「群れの大きさ」の倍率
-  curve:2.0,           // 濃さの立ち上がり。2だと港の近くが平ら。1で直線、0.6でいきなり立つ
+  near:500,            // ここより内側は近海。濃さは倍率1で平ら
+  double:2500,         // この距離ごとに濃さが2倍になる。小さくするほど早く沖へ出たくなる
+  richCap:12,          // 濃さの上限。ここで頭打ちになり、それ以上沖へ出る意味は無くなる
+  countMax:2.0,        // 群れの「数」の倍率。濃さと違って上限どまりにする
   tightMax:0.62,       // 遠洋での群れの半径。小さいほど密で、竿の下の魚が増える＝漁獲効率
   portClear:420        // 港からこの距離までは魚を湧かせない。岸壁の真下に群れが居ると、
                        // それを追っているだけで港に吸い込まれて漁が終わってしまう
@@ -1202,8 +1205,14 @@ const TANK_MAX=8;
 function ship(){ return SHIPS[S.shipIdx]; }
 function fuelMax(){ return Math.round(ship().fuel*(1+TANK_STEP*(S.up.tank||0))); }
 function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
-/* 0=近海 1=遠洋。港からの距離だけで決まる */
-function seaRich(){ return clamp((portDist()-SEA.near)/(SEA.far-SEA.near),0,1); }
+/* 濃さの倍率。1=近海、richCap=頭打ち */
+function seaRich(){
+  const d=portDist();
+  if(d<=SEA.near) return 1;
+  return Math.min(SEA.richCap, Math.pow(2,(d-SEA.near)/SEA.double));
+}
+/* 上の倍率を 0〜1 に直したもの。群れの数や密度など、青天井にしたくないものに使う */
+function seaT(){ return Math.log2(seaRich())/Math.log2(SEA.richCap); }
 function costOf(id){
   const P=PRICE[id]; if(!P) return Infinity;
   const n = id==='crew' ? (S.up.crew-2) : (id==='tank' ? (S.up.tank||0) : S.up[id]);
@@ -1322,7 +1331,7 @@ function makeSchool(x,y,count){
   return s;
 }
 function manageWorld(dt){
-  const B=S.boat, p=seaRich();          // 時間ではなく港からの距離。遠いほど濃い海になる
+  const B=S.boat, rich=seaRich(), p=seaT();   // 時間ではなく港からの距離。遠いほど濃い海になる
   const target=Math.round(14*(1+(SEA.countMax-1)*p)), DESP=1000;
   for(let i=S.schools.length-1;i>=0;i--){
     const s=S.schools[i];
@@ -1332,8 +1341,7 @@ function manageWorld(dt){
   let guard=0;
   const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
   while(S.schools.length<target && S.totalFish<cap && guard++<6){
-    const q=Math.pow(p, SEA.curve);   // 港からの距離に対する濃さの立ち上がり
-    const n=Math.round(rnd(50,150)*(1+(SEA.sizeMax-1)*q)*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
+    const n=Math.round(rnd(50,150)*rich*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
     // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
     // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
     const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);

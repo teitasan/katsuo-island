@@ -462,7 +462,7 @@ ja:{
  'pick.efHull':'{a}t → {b}t船',
  'unit.crew':'人','unit.rate':'本/秒','unit.knot':'ノット','unit.km':'km','unit.m':'m','unit.none':'なし',
  'chest.1':'宝箱','chest.3':'当たり','chest.5':'大当たり',
- 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}','chest.fish':'積荷 +{n}本',
+ 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}',
  'res.head':'リョウ シュウリョウ','res.scoreUnit':'本',
  'rank.1':'見習い','rank.1.fl':'まだ竿が重い。',
  'rank.2':'一人前','rank.2.fl':'群れを見つける目はできた。',
@@ -493,7 +493,7 @@ en:{
  'pick.efHull':'{a}t → {b}t boat',
  'unit.crew':'','unit.rate':'fish/s','unit.knot':'kn','unit.km':'km','unit.m':'m','unit.none':'none',
  'chest.1':'CHEST','chest.3':'GOOD HAUL','chest.5':'JACKPOT',
- 'chest.item':'{name} up','chest.itemN':'{name} ×{n}','chest.fish':'+{n} fish',
+ 'chest.item':'{name} up','chest.itemN':'{name} ×{n}',
  'res.head':'TRIP END','res.scoreUnit':'fish',
  'rank.1':'Apprentice','rank.1.fl':'The pole still feels heavy.',
  'rank.2':'Deckhand','rank.2.fl':"You've got an eye for the schools now.",
@@ -1723,19 +1723,21 @@ function dropChest(){                            // 魚探を積んだ瞬間に1
   const B=S.boat, a=rnd(0,TAU), d=Math.min(rnd(300,420), Math.max(300, stat.sonar()));
   S.chests.push({x:B.x+Math.cos(a)*d, y:B.y+Math.sin(a)*d, life:52, ph:rnd(0,TAU)});
 }
-/* 強化は島でしか買わないので、宝箱は積荷になる。
+/* 宝箱は漂流物なので、魚ではなく金が直接入る。
+   積荷と違って燃料切れで半値にならないぶん、拾いに行く価値がある。
    当たりの重みは一本釣りの 70/23/7% をそのまま流用した */
-const CHEST_FISH=[40,120,300];
+const CHEST_YEN=[2000,6000,15000];
 function openChest(){
   const r=Math.random(), i = r<.70?0:(r<.93?1:2);
-  const n=CHEST_FISH[i];
-  S.hold+=n; S.score+=n; S.prog+=n; S.pop=1;   // 積荷に入れる。忘れると表示だけ出て何も増えない
+  const n=CHEST_YEN[i];
+  S.money+=n;
+  saveGame();                                   // 航海の途中で閉じても消えないように
   bang('chest'); sfxChest();
   toastEl.querySelector('.hd').textContent = t(i===2?'chest.5':(i===1?'chest.3':'chest.1'));
   toastItems.innerHTML='';
   {
     const d=document.createElement('div'); d.className='it';
-    d.textContent = t('chest.fish',{n:fmt(n)});
+    d.textContent = yen(n);
     toastItems.appendChild(d);
   }
   toastEl.classList.add('on');

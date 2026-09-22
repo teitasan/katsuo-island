@@ -462,7 +462,7 @@ ja:{
  'pick.efHull':'{a}t → {b}t船',
  'unit.crew':'人','unit.rate':'本/秒','unit.knot':'ノット','unit.km':'km','unit.m':'m','unit.none':'なし',
  'chest.1':'宝箱','chest.3':'当たり','chest.5':'大当たり',
- 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}','chest.fish':'{n}本',
+ 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}','chest.fish':'積荷 +{n}本',
  'res.head':'リョウ シュウリョウ','res.scoreUnit':'本',
  'rank.1':'見習い','rank.1.fl':'まだ竿が重い。',
  'rank.2':'一人前','rank.2.fl':'群れを見つける目はできた。',
@@ -493,7 +493,7 @@ en:{
  'pick.efHull':'{a}t → {b}t boat',
  'unit.crew':'','unit.rate':'fish/s','unit.knot':'kn','unit.km':'km','unit.m':'m','unit.none':'none',
  'chest.1':'CHEST','chest.3':'GOOD HAUL','chest.5':'JACKPOT',
- 'chest.item':'{name} up','chest.itemN':'{name} ×{n}','chest.fish':'{n} fish',
+ 'chest.item':'{name} up','chest.itemN':'{name} ×{n}','chest.fish':'+{n} fish',
  'res.head':'TRIP END','res.scoreUnit':'fish',
  'rank.1':'Apprentice','rank.1.fl':'The pole still feels heavy.',
  'rank.2':'Deckhand','rank.2.fl':"You've got an eye for the schools now.",
@@ -1556,7 +1556,7 @@ function netHaul(){
   const N=S.net, n=N.held.length;
   N.held.length=0; N.phase='wait'; N.t=netCycle();
   if(n<=0) return;
-  S.score+=n; S.prog+=n; S.pop=1;
+  S.hold+=n; S.score+=n; S.prog+=n; S.pop=1;
   bang(n>=120?'chest':'lv'); sfxChest();
   elHaul.classList.remove('go'); void elHaul.offsetWidth;
   elHaul.textContent='+'+fmt(n); elHaul.classList.add('go');
@@ -1729,7 +1729,7 @@ const CHEST_FISH=[40,120,300];
 function openChest(){
   const r=Math.random(), i = r<.70?0:(r<.93?1:2);
   const n=CHEST_FISH[i];
-  S.score+=n; S.prog+=n; S.pop=1;
+  S.hold+=n; S.score+=n; S.prog+=n; S.pop=1;   // 積荷に入れる。忘れると表示だけ出て何も増えない
   bang('chest'); sfxChest();
   toastEl.querySelector('.hd').textContent = t(i===2?'chest.5':(i===1?'chest.3':'chest.1'));
   toastItems.innerHTML='';
@@ -2830,6 +2830,9 @@ function shopRow(icon,name,sub,price,ok,onClick){
   const n=document.createElement('div'); n.className='nm';
   n.innerHTML=name+(sub?'<em>'+sub+'</em>':''); b.appendChild(n);
   const pr=document.createElement('div'); pr.className='pr'; pr.textContent=price; b.appendChild(pr);
+  /* 押すと paintPort が行ごと作り直すので、海のクリック判定へ抜ける前にここで止める。
+     抜けると「何もない所を押した」と見なされて品書きが閉じてしまう */
+  b.addEventListener('click',e=>{ e.stopPropagation(); });
   if(ok) b.addEventListener('click',onClick);
   elPShop.appendChild(b);
 }
@@ -2875,6 +2878,7 @@ frameEl.addEventListener('mousemove',e=>{
 frameEl.addEventListener('mouseleave',()=>{ hoverSpot=null; showTip(null); frameEl.style.cursor=''; });
 frameEl.addEventListener('click',e=>{
   if(S.phase!=='port') return;
+  if(e.target.closest && e.target.closest('.pshop,.pgo,.pmoney,.mute')) return;
   const p=toLocal(e), sp=spotAt(p.x,p.y);
   if(!sp){ if(shopOpen){ shopOpen=null; paintPort(); } return; }
   shopOpen = shopOpen===sp.id ? null : sp.id;

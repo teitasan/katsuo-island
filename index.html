@@ -2504,17 +2504,8 @@ function drawRadar(){
   g.restore();
   g.strokeStyle='rgba(234,243,244,.22)';      // 画面範囲
   g.strokeRect(C-VW/2*k, C-VH/2*k, VW*k, VH*k);
-  {                                           // 陸。魚の反応より先に敷いて、上に錨を置く
-    const L=landRect();
-    const x0=C+(L.x0-B.x)*k, y0=C+(L.y0-B.y)*k, w=(L.x1-L.x0)*k, h=(L.y1-L.y0)*k;
-    if(x0<W && y0<W && x0+w>0 && y0+h>0){
-      g.fillStyle='#4a6b3a'; g.fillRect(x0,y0,w,h);
-      g.fillStyle='#6d6250'; g.fillRect(x0,y0,w,2); g.fillRect(x0,y0+h-2,w,2);
-      g.fillRect(x0,y0,2,h); g.fillRect(x0+w-2,y0,2,h);
-    }
-  }
   drawEchoes(g,C,R,k,B,sw);                   // 魚群の反応（実位置をセルに集計）
-  {                                           // 船着場の錨
+  {                                           // 港は錨ひとつで示す。陸を塗ると魚の反応が読みにくい
     const d=dockPos(), x=C+(d.x-B.x)*k, y=C+(d.y-B.y)*k;
     if(x>-8 && x<W+8 && y>-8 && y<W+8 && anchorCv){
       const sc=Math.max(1,Math.round(W/60));

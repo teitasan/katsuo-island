@@ -208,6 +208,7 @@
     font-size:3.4em; font-weight:700; letter-spacing:.02em; color:var(--gold);
     pointer-events:none; opacity:0; white-space:nowrap;
     text-shadow:0 .04em 0 #6b4a10, 0 .18em .7em rgba(242,179,44,.65)}
+  .haul.on{opacity:1; animation:none}
   .haul.go{animation:haulpop .95s cubic-bezier(.2,1.6,.35,1) both}
   @keyframes haulpop{
     0%{opacity:0; transform:translate(-50%,-50%) scale(.35)}
@@ -841,6 +842,21 @@ function buildGull(){
   }
 }
 
+/* ---------------- 小判（水揚げで魚が変わる） ---------------- */
+/* 回転の4コマ。横幅を潰すだけで回って見える */
+const coinCv=[];
+function buildCoin(){
+  const ws=[7,5,3,1];
+  for(const w of ws){
+    const c=mkc(9,9), g=gx(c), x0=(9-w)/2|0;
+    px(g,x0,1,w,7,'#8a5f12');
+    px(g,x0,2,w,5,'#f2b32c');
+    px(g,x0,2,w,1,'#ffe9a8');
+    if(w>=5){ px(g,x0+1,4,w-2,1,'#c98a12'); px(g,x0+1,3,1,1,'#fff6dd'); }
+    coinCv.push(c);
+  }
+}
+
 /* ---------------- 錨（港の目印） ---------------- */
 /* 港の方角の矢印と魚探の両方に出す。7x9 */
 const ANCHOR_MAP=[
@@ -1097,6 +1113,7 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
+  land:null, parts2:[],
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
 const TONS=[9,19,49,119,199];
@@ -1377,7 +1394,7 @@ function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
 "use strict";
 /* ================= アセット構築 ================= */
 function initAssets(){
-  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor();
+  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor(); buildCoin();
   for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
   for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
     for(let p=0;p<2;p++) for(let i=0;i<3;i++){
@@ -1818,7 +1835,7 @@ function updateVoyage(dt){
    速く入れば速く寄る。航海中は必ず0なのでカメラが船から遅れることはない */
 function updateCam(dt){
   if(S.phase==='sea'){ S.camK=0; return; }
-  if(S.phase==='port'){ S.camK=1; return; }      // 着岸は2px手前で止まるので、港では締めておく
+  if(S.phase==='port'||S.phase==='landing'){ S.camK=1; return; }   // 着岸は2px手前で止まるので締めておく
   S.camK = clamp(1-dockDist()/PORT.r, 0, 1);
 }
 function camPos(){
@@ -1832,17 +1849,102 @@ function beginDocking(){
   S.stick.id=-1; S.stick.on=false;
 }
 /* 着岸したら、水揚げ・換金・給油をまとめて自動でやる（仕様12） */
+/* 水揚げ。着岸したらすぐ港の画面へ行かず、釣った本数ぶん魚を跳ねさせて金に変える。
+   数字が一瞬で増えるより、粒が出きるのを見ているほうが手応えが残る */
+const HAUL={
+  sec:3.0,          // 全体の秒数
+  emit:0.72,        // そのうち魚を投げ続ける割合。残りは最後の粒が消えるまでの余韻
+  maxPops:420,      // 出す粒の上限。これを超える釣果は1粒が複数匹ぶんになる。
+                    // 増やしすぎると船の上が白い塊になって、粒が1つずつ見えなくなる
+  rise:118,         // 跳ね上がる初速
+  spread:72,        // 横のばらつき
+  grav:260,
+  spin:9,           // 魚の回転の速さ
+  flip:0.34,        // 跳ねてから金に変わるまでの秒数
+  coinSec:0.5,      // 金に変わってから消えるまで
+  sfxPerSec:16      // 音は間引く。粒の数だけ鳴らすと潰れる
+};
 function arrivePort(){
   const rate = S.dry?FUEL.dryPenalty:1;
   const fish=S.hold, yen=Math.round(fish*YEN*rate);
-  S.money+=yen; S.hold=0;
   S.fuel=fuelMax();
   S.landed={fish, yen, dry:S.dry};
-  S.dry=false;
+  S.phase='landing';
+  S.land={t:0, fish, yen, money0:S.money, pops:0, sfxT:0,
+          n:Math.min(HAUL.maxPops, Math.max(1,fish))};
+  S.parts2.length=0;
+  elHaul.classList.remove('go'); elHaul.classList.add('on');
+  if(fish<=0) finishLanding();
+}
+function finishLanding(){
+  const L=S.land;
+  if(L){ S.money=L.money0+L.yen; }
+  S.hold=0; S.dry=false; S.land=null; S.parts2.length=0;
+  elHaul.classList.remove('on'); elHaul.textContent='';
   S.phase='port';
   saveGame();
   showPort();
   sfxChest();
+}
+function updateLanding(dt){
+  const L=S.land; if(!L) return;
+  L.t+=dt;
+  const B=S.boat, b=boats[S.up.hull-1];
+  const emitSec=HAUL.sec*HAUL.emit;
+  const u=clamp(L.t/emitSec,0,1);
+  // 粒を出す
+  const want=Math.round(L.n*u);
+  let make=want-L.pops;
+  L.pops=want;
+  L.sfxT-=dt;
+  while(make-->0){
+    S.parts2.push({
+      x:B.x+rnd(-b.len*0.42,b.len*0.42), y:B.y+rnd(-2,3),
+      vx:rnd(-HAUL.spread,HAUL.spread), vy:-HAUL.rise*rnd(0.8,1.25),
+      t:0, a:rnd(0,TAU), av:rnd(-HAUL.spin,HAUL.spin), ph:0, d:rint(0,2)
+    });
+    if(L.sfxT<=0){ L.sfxT=1/HAUL.sfxPerSec; tone(880+rnd(-90,180),.05,'square',.035,1.5); }
+  }
+  // 数字は粒に合わせて動かす
+  S.money=L.money0+Math.round(L.yen*u);
+  S.hold=Math.round(L.fish*(1-u));
+  setTxt(elHaul, yen(S.money-L.money0));
+  if(L.t>=HAUL.sec) finishLanding();
+}
+function updateParts2(dt){
+  for(let i=S.parts2.length-1;i>=0;i--){
+    const p=S.parts2[i]; p.t+=dt;
+    if(p.ph===0){
+      p.vy+=HAUL.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.a+=p.av*dt;
+      if(p.t>=HAUL.flip){ p.ph=1; p.t=0; p.vx*=0.35; p.vy=-26; }
+    }else{
+      p.vy+=HAUL.grav*0.12*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
+      if(p.t>=HAUL.coinSec) S.parts2.splice(i,1);
+    }
+  }
+}
+function drawLanding(){
+  if(!S.parts2.length) return;
+  const ox=OX, oy=OY, k=1/TAU*ANG;
+  for(const p of S.parts2){
+    const x=Math.round(p.x+ox), y=Math.round(p.y+oy);
+    if(p.ph===0){
+      const ai=((Math.round(p.a*k)%ANG)+ANG)%ANG;
+      ctx.drawImage(fishAtlas, ai*CELL, 3*CELL, CELL, CELL, (x-CELL/2)|0, (y-CELL/2)|0, CELL, CELL);
+    }else{
+      const u=p.t/HAUL.coinSec;
+      if(u<0.16){                                   // 変わった瞬間の閃光
+        ctx.globalAlpha=1-u/0.16;
+        ctx.fillStyle='#fff6dd';
+        ctx.fillRect(x-5,y,11,1); ctx.fillRect(x,y-5,1,11);
+        ctx.globalAlpha=1;
+      }
+      const f=coinCv[(Math.round(p.t*22)+p.d)&3];
+      ctx.globalAlpha=u>0.7?(1-u)/0.3:1;
+      ctx.drawImage(f, x-4, y-4);
+      ctx.globalAlpha=1;
+    }
+  }
 }
 function departPort(){
   if(S.phase!=='port') return;
@@ -2420,7 +2522,7 @@ function draw(){
   setCam();
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
-  drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
+  drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawLanding();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
   drawSpots(); drawPortArrow(); drawBurst(); drawStick();
 }
@@ -2661,7 +2763,7 @@ const scrResult=document.getElementById('result'), promptEl=document.getElementB
 /* 1回の航海の仕切り直し。所持金・船・強化は永続なので触らない */
 function reset(){
   S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
-  S.hold=0; S.dry=false; S.landed=null; S.camK=S.phase==='sea'?0:1;
+  S.hold=0; S.dry=false; S.landed=null; S.land=null; S.parts2.length=0; S.camK=S.phase==='sea'?0:1;
   S.schools.length=0; S.chests.length=0; S.crew.length=0;
   S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
@@ -2914,6 +3016,7 @@ frameEl.addEventListener('mousemove',e=>{
 });
 frameEl.addEventListener('mouseleave',()=>{ hoverSpot=null; showTip(null); frameEl.style.cursor=''; });
 frameEl.addEventListener('click',e=>{
+  if(S.phase==='landing'){ finishLanding(); return; }   // 見飽きたら飛ばせる
   if(S.phase!=='port') return;
   if(e.target.closest && e.target.closest('.pshop,.pgo,.pmoney,.mute')) return;
   const p=toLocal(e), sp=spotAt(p.x,p.y);
@@ -3027,6 +3130,8 @@ function tick(now){
     manageWorld(dt); updateSchools(dt);
     updateVoyage(dt);
     updateCam(dt);
+    if(S.phase==='landing') updateLanding(dt);
+    if(S.parts2.length) updateParts2(dt);
     if(S.started && S.phase==='sea'){ updateFishing(dt); updateFever(dt); }
     updateParts(dt);
   }

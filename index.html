@@ -273,14 +273,16 @@
     font-family:"M PLUS 1 Code",ui-monospace,monospace; white-space:pre; text-shadow:0 1px 2px #000}
   .plog b{color:var(--foam)} .plog em{font-style:normal; color:var(--gold)}
   .plog u{text-decoration:none; color:#ff8b6a}
-  .psigns{position:absolute; right:1em; top:1em; display:flex; flex-direction:column; gap:.5em; align-items:flex-end}
-  .psign{padding:.5em 1.1em; font-size:.92em; letter-spacing:.14em; color:#ffe9bd;
-    background:linear-gradient(180deg,#432e1b,#2c1d10); border:1px solid #6b4a26;
-    border-top:3px solid var(--gold); border-radius:2px; box-shadow:0 10px 22px -12px #000;
-    transition:transform .1s ease, border-color .1s ease}
-  .psign:hover{transform:translateY(-2px); border-color:var(--gold)}
-  .psign.on{border-color:var(--gold); background:linear-gradient(180deg,#5c4025,#3a2716)}
-  .pshop{position:absolute; right:1em; top:9.4em; width:19em; max-height:64%; overflow:auto;
+  /* 建物に合わせる吹き出し。位置は JS が % で入れる */
+  .ptip{position:absolute; transform:translate(-50%,-100%); pointer-events:none;
+    padding:.3em .7em .35em; white-space:nowrap; text-align:center;
+    background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96));
+    border:1px solid var(--line2); border-bottom:2px solid var(--gold); border-radius:2px;
+    box-shadow:0 8px 18px -10px #000}
+  .ptip[hidden]{display:none}
+  .ptip b{display:block; font-size:.92em; color:#ffe9bd; font-weight:700; letter-spacing:.06em}
+  .ptip em{display:block; font-style:normal; font-size:.72em; color:var(--mist); margin-top:.1em}
+  .pshop{position:absolute; width:19em; max-height:60%; overflow:auto;
     padding:.5em; background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96));
     border:1px solid var(--line); border-radius:2px; box-shadow:0 18px 34px -18px #000}
   .pshop[hidden]{display:none}
@@ -397,11 +399,7 @@
     <div class="port" id="port" hidden>
       <div class="pmoney"><span>所持金</span><b class="num" id="pmoney">¥0</b></div>
       <div class="plog" id="plog"></div>
-      <div class="psigns">
-        <button class="psign" data-shop="crew">船員募集</button>
-        <button class="psign" data-shop="gear">装備・強化</button>
-        <button class="psign" data-shop="ship">造船所</button>
-      </div>
+      <div class="ptip" id="ptip" hidden><b></b><em></em></div>
       <div class="pshop" id="pshop" hidden></div>
       <button class="pgo disp" id="pgo">出港</button>
     </div>
@@ -881,6 +879,20 @@ function buildPort(){
     for(let x=bx+2;x<bx+bw-1;x+=4) px(g,x,by+3,1,bh-6,col2);
     px(g,bx+bw/2-5,by+bh-14,10,14,'#2a2620');            // 扉
     px(g,bx-2,by-3,bw+4,3,'#d6d0c2');                    // 庇
+  }
+  /* 造船所の船台。青い小屋の南から浜へ下ろして、建造中の船体を載せる。
+     これが無いと倉庫と見分けがつかない */
+  {
+    const bx=76, bw=54, y0=118+38;
+    for(let x=bx+8;x<bx+bw-8;x++) px(g,x,y0,1,20,'#6b4a28');
+    for(let y=y0;y<y0+20;y+=4) px(g,bx+8,y,bw-16,1,'#54381f');
+    px(g,bx+8,y0,bw-16,1,'#8a6336');
+    const hx=bx+13, hy=y0+4;                   // 建造中の船体（骨だけ）
+    px(g,hx,hy,26,7,'#c9b184');
+    px(g,hx,hy,26,1,'#e0cfa4');
+    px(g,hx,hy+6,26,1,'#8a7450');
+    for(let i=2;i<26;i+=4) px(g,hx+i,hy+1,1,5,'#8a7450');
+    px(g,hx+26,hy+1,3,5,'#c9b184');
   }
   // 灯台
   const lx=20, ly=100;
@@ -1957,6 +1969,27 @@ function drawPort(){
 }
 /* 港が画面の外に出ているあいだ、画面の縁に方角を出す（仕様9）。
    海図もミニマップも出さない。これだけを頼りに戻る */
+/* 港に着いている間、合わせている建物と開いている建物に枠を出す。
+   押せる場所がどこかは、文字ではなくこれで分かればいい */
+function drawSpots(){
+  if(S.phase!=='port'||typeof SPOTS==='undefined') return;
+  for(const sp of SPOTS){
+    const on = sp===hoverSpot, open = sp.id===shopOpen;
+    if(!on&&!open) continue;
+    const b=spotBox(sp);
+    const x=Math.round(b.x0), y=Math.round(b.y0);
+    const w=Math.round(b.x1-b.x0), h=Math.round(b.y1-b.y0);
+    ctx.fillStyle = open ? 'rgba(242,179,44,.16)' : 'rgba(242,179,44,.08)';
+    ctx.fillRect(x,y,w,h);
+    ctx.fillStyle = open ? '#f2b32c' : 'rgba(242,179,44,.75)';
+    const c=7;                                   // 四隅だけ。全周だと箱に見えて絵が死ぬ
+    for(const [ax,ay,dx,dy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]){
+      ctx.fillRect(ax-(dx<0?c:0), ay-(dy<0?1:0), c, 1);
+      ctx.fillRect(ax-(dx<0?1:0), ay-(dy<0?c:0), 1, c);
+    }
+  }
+}
+
 /* 港の範囲。ここへ入ると操船を離れて入港が始まる */
 function drawPortRing(){
   if(S.phase==='port'||!portRing) return;
@@ -2351,7 +2384,7 @@ function draw(){
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
-  drawPortArrow(); drawBurst(); drawStick();
+  drawSpots(); drawPortArrow(); drawBurst(); drawStick();
 }
 
 /* ================= 魚群探知機 ================= */
@@ -2716,15 +2749,54 @@ function sfxEnd(){ tone(196,1.4,'sawtooth',.10,.7); tone(147,1.6,'sine',.08,.75,
 /* 別画面へは飛ばさない。港の絵の上に看板を置いて、押すと品書きが出る（仕様13） */
 const elPort=document.getElementById('port'), elPMoney=document.getElementById('pmoney');
 const elPShop=document.getElementById('pshop'), elPLog=document.getElementById('plog');
-let shopOpen=null;
+let shopOpen=null, hoverSpot=null;
 const SHIP_NAME=['小型一本釣り船','中型一本釣り船','大型一本釣り船'];
+const elPTip=document.getElementById('ptip');
+/* 押せる建物。矩形は buildPort のスプライト座標。絵を動かしたらここも動かす */
+const SPOTS=[
+  {id:'crew', sx:160, sy:68,  sw:24, sh:26, name:'漁協',   note:'船員を雇う'},
+  {id:'gear', sx:12,  sy:43,  sw:56, sh:42, name:'漁具店', note:'釣具・機関・魚探・集魚・燃料'},
+  {id:'ship', sx:74,  sy:115, sw:58, sh:65, name:'造船所', note:'船を買い替える'}
+];
+/* スプライト座標の矩形を、いま画面のどこに出ているかへ直す */
+function spotBox(sp){
+  const o=portOrigin(), cam=camPos();
+  const x0=sp.sx+o.x-cam.x+VW/2, y0=sp.sy+o.y-cam.y+VH/2;
+  return {x0, y0, x1:x0+sp.sw, y1:y0+sp.sh};
+}
+function spotAt(mx,my){
+  for(const sp of SPOTS){
+    const b=spotBox(sp);
+    if(mx>=b.x0&&mx<=b.x1&&my>=b.y0&&my<=b.y1) return sp;
+  }
+  return null;
+}
+function showTip(sp){
+  if(!sp){ elPTip.hidden=true; return; }
+  const b=spotBox(sp);
+  elPTip.querySelector('b').textContent=sp.name;
+  elPTip.querySelector('em').textContent=sp.note;
+  elPTip.style.left=((b.x0+b.x1)/2/VW*100)+'%';
+  elPTip.style.top=((b.y0-3)/VH*100)+'%';
+  elPTip.hidden=false;
+}
+/* 品書きは押した建物のすぐ横に出す。画面からはみ出さないよう寄せる */
+function placeShop(sp){
+  const b=spotBox(sp);
+  const w=VW*0.40, h=VH*0.60;
+  let x=b.x1+10; if(x+w>VW-6) x=Math.max(6,b.x0-10-w);
+  let y=b.y0;    if(y+h>VH-6) y=Math.max(6,VH-6-h);
+  elPShop.style.left=(x/VW*100)+'%';
+  elPShop.style.top=(y/VH*100)+'%';
+}
 function yen(n){ return '¥'+fmt(n); }
 
 function showPort(){
   elPort.hidden=false; hud.classList.remove('on');
   shopOpen=null; paintPort();
 }
-function hidePort(){ elPort.hidden=true; hud.classList.add('on'); }
+function hidePort(){ elPort.hidden=true; hud.classList.add('on');
+  hoverSpot=null; showTip(null); frameEl.style.cursor=''; }
 
 function paintPort(){
   elPMoney.textContent=yen(S.money);
@@ -2734,8 +2806,9 @@ function paintPort(){
        + (L.dry?'\n<u>燃料切れ。半値でしか買ってもらえなかった</u>':'')
        + '\n満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>')
     : ('満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>');
-  document.querySelectorAll('.psign').forEach(b=>b.classList.toggle('on', b.dataset.shop===shopOpen));
   if(!shopOpen){ elPShop.hidden=true; return; }
+  const sp=SPOTS.find(x=>x.id===shopOpen);
+  if(sp) placeShop(sp);
   elPShop.hidden=false; elPShop.innerHTML='';
   if(shopOpen==='ship') paintShips(); else paintGearShop(shopOpen==='crew'?['crew']:['rate','engine','sonar','lure','tank']);
 }
@@ -2782,8 +2855,19 @@ function setShip(i){
   const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;      // 新しい船も船着場に着けておく
   S.fuel=fuelMax();
 }
-document.querySelectorAll('.psign').forEach(b=>{
-  b.addEventListener('click',()=>{ shopOpen = shopOpen===b.dataset.shop ? null : b.dataset.shop; paintPort(); });
+/* 港では海面がそのまま操作盤になる。建物に合わせると名前が出て、押すと品書きが開く */
+frameEl.addEventListener('mousemove',e=>{
+  if(S.phase!=='port'){ if(hoverSpot){ hoverSpot=null; showTip(null); } return; }
+  const p=toLocal(e), sp=spotAt(p.x,p.y);
+  if(sp!==hoverSpot){ hoverSpot=sp; showTip(sp); frameEl.style.cursor=sp?'pointer':''; }
+});
+frameEl.addEventListener('mouseleave',()=>{ hoverSpot=null; showTip(null); frameEl.style.cursor=''; });
+frameEl.addEventListener('click',e=>{
+  if(S.phase!=='port') return;
+  const p=toLocal(e), sp=spotAt(p.x,p.y);
+  if(!sp){ if(shopOpen){ shopOpen=null; paintPort(); } return; }
+  shopOpen = shopOpen===sp.id ? null : sp.id;
+  sfxPick(); paintPort();
 });
 document.getElementById('pgo').addEventListener('click',departPort);
 

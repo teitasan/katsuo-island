@@ -1054,7 +1054,7 @@ const S={
   rt:0, shake:0, freeze:0, pop:0, pops:[], burst:null, inRange:0,
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
-  phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0,
+  phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
 const TONS=[9,19,49,119,199];
@@ -1205,7 +1205,9 @@ const PORT={
   dock:{x:0, y:22},    // 船着場。着岸するとここへ吸い寄せられる。桟橋の南側に横付けする位置
   r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
-  out:110              // 出港で船着場からここまで離れたら操船を返す
+  out:110,             // 出港で船着場からここまで離れたら操船を返す
+  view:{x:-70, y:-10}, // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
+  camEase:0.004        // カメラの寄り。小さいほど速く寄る（1秒あたりの残り率）
 };
 /* 海の濃さは港からの距離の「指数」で増やす。上限のあるランプだと、タンクが
    その上限に届いた時点で一番おいしい漁場が動かなくなる。一定距離ごとに倍、
@@ -1766,6 +1768,17 @@ function updateVoyage(dt){
     if(S.phase==='departing' && dockDist()>PORT.out){ B.sp=0; S.phase='sea'; }
   }
 }
+/* 0=船に貼りつく 1=島を見る。入港で島へ寄り、出港で船へ戻る。
+   航海中は必ず 0 なのでカメラが船から遅れることはない */
+function updateCam(dt){
+  const want = (S.phase==='port'||S.phase==='docking') ? 1 : 0;
+  S.camK += (want-S.camK)*(1-Math.pow(PORT.camEase, dt));
+  if(Math.abs(want-S.camK)<0.001) S.camK=want;
+}
+function camPos(){
+  const B=S.boat, k=S.camK;
+  return {x:B.x+(PORT.x+PORT.view.x-B.x)*k, y:B.y+(PORT.y+PORT.view.y-B.y)*k};
+}
 function beginDocking(){
   S.phase='docking';
   S.fever=false; S.fvT=0; S.fvRound=0;
@@ -1917,18 +1930,21 @@ function initPatterns(){
   topGrad.addColorStop(.55,'rgba(6,40,62,0)');
   topGrad.addColorStop(1,'rgba(2,14,24,.22)');
 }
+/* カメラが船から離れる（入港中）と画面の外側がはみ出すので、
+   海はその余白ぶんまで広く塗る。タイルは64pxなので余白も64の倍数にする */
+const SEA_PAD=256;
 function drawSea(){
   const B=S.boat;
   ctx.save();
   ctx.translate(-(((B.x*.55)%64)+64)%64, -(((B.y*.55)%64)+64)%64);
-  ctx.fillStyle=patDeep; ctx.fillRect(0,0,VW+64,VH+64);
+  ctx.fillStyle=patDeep; ctx.fillRect(-SEA_PAD,-SEA_PAD,VW+64+SEA_PAD*2,VH+64+SEA_PAD*2);
   ctx.restore();
   ctx.save();
   const dx=B.x-S.t*8, dy=B.y-S.t*2.5;
   ctx.translate(-((dx%64)+64)%64, -((dy%64)+64)%64);
-  ctx.fillStyle=patSurf; ctx.fillRect(0,0,VW+64,VH+64);
+  ctx.fillStyle=patSurf; ctx.fillRect(-SEA_PAD,-SEA_PAD,VW+64+SEA_PAD*2,VH+64+SEA_PAD*2);
   ctx.restore();
-  ctx.fillStyle=topGrad; ctx.fillRect(-5,-5,VW+10,VH+10);   // 揺れたぶんの余白まで塗る
+  ctx.fillStyle=topGrad; ctx.fillRect(-SEA_PAD,-5,VW+SEA_PAD*2,VH+10);   // 揺れたぶんの余白まで塗る
 }
 /* 港。海の上に1枚置くだけ。世界の原点に船着場が来るよう左上を逆算する */
 function drawPort(){
@@ -2326,6 +2342,10 @@ function draw(){
     const m=S.shake*S.shake*3.4;
     sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
   }
+  /* 各描画は「船が画面中央」で座標を出している。カメラをずらすぶんは
+     ワールド描画をまとめて平行移動して吸収する（画素がにじまないよう整数で） */
+  const B=S.boat, cam=camPos();
+  sx+=Math.round(B.x-cam.x); sy+=Math.round(B.y-cam.y);
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
@@ -2559,7 +2579,7 @@ const scrResult=document.getElementById('result'), promptEl=document.getElementB
 /* 1回の航海の仕切り直し。所持金・船・強化は永続なので触らない */
 function reset(){
   S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
-  S.hold=0; S.dry=false; S.landed=null;
+  S.hold=0; S.dry=false; S.landed=null; S.camK=(S.phase==='port'||S.phase==='docking')?1:0;
   S.schools.length=0; S.chests.length=0; S.crew.length=0;
   S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
@@ -2869,6 +2889,7 @@ function tick(now){
     if(S.phase==='sea') updateBoat(dt);
     manageWorld(dt); updateSchools(dt);
     updateVoyage(dt);
+    updateCam(dt);
     if(S.started && S.phase==='sea'){ updateFishing(dt); updateFever(dt); }
     updateParts(dt);
   }

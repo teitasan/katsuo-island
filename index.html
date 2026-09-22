@@ -904,6 +904,23 @@ function buildPort(){
   px(g,gw+30,py0+20,26,7,'#3a5f7a'); px(g,gw+30,py0+20,26,2,'#5d8aa8');
   portCv=c;
 }
+/* 入港が始まる円。静止しているので1枚に焼いて貼るだけにする */
+let portRing=null;
+const RING_ON=5, RING_GAP=7;      // 点線の実線と隙間(px)
+function buildPortRing(){
+  const r=PORT.r, W=r*2+4;
+  const c=mkc(W,W), g=gx(c);
+  const n=Math.round(TAU*r), per=RING_ON+RING_GAP;
+  for(let i=0;i<n;i++){
+    if(i%per>=RING_ON) continue;
+    const a=i/n*TAU;
+    const x=Math.round(r+2+Math.cos(a)*r), y=Math.round(r+2+Math.sin(a)*r);
+    px(g,x,y+1,1,1,'rgba(3,18,29,.5)');            // 海に沈まないよう影を1px
+    px(g,x,y,1,1,'rgba(242,179,44,.6)');
+  }
+  portRing=c;
+}
+
 /* 港の絵の中で船着場がどこかを、世界座標のオフセットで返す */
 const PORT_ANCHOR={x:PORT_W-46, y:PORT_H/2};
 
@@ -1282,7 +1299,7 @@ function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
 "use strict";
 /* ================= アセット構築 ================= */
 function initAssets(){
-  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag();
+  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing();
   for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
   for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
     for(let p=0;p<2;p++) for(let i=0;i<3;i++){
@@ -1883,6 +1900,14 @@ function drawPort(){
 }
 /* 港が画面の外に出ているあいだ、画面の縁に方角を出す（仕様9）。
    海図もミニマップも出さない。これだけを頼りに戻る */
+/* 港の範囲。ここへ入ると操船を離れて入港が始まる */
+function drawPortRing(){
+  if(S.phase==='port'||!portRing) return;
+  const B=S.boat, r=PORT.r;
+  const x=PORT.x-r-2+(VW/2-B.x), y=PORT.y-r-2+(VH/2-B.y);
+  if(x>VW||y>VH||x+portRing.width<0||y+portRing.height<0) return;
+  ctx.drawImage(portRing, x|0, y|0);
+}
 function drawPortArrow(){
   if(S.phase!=='sea') return;
   const B=S.boat, sx=VW/2-(B.x-PORT.x), sy=VH/2-(B.y-PORT.y);
@@ -2262,7 +2287,7 @@ function draw(){
     sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
   }
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
-  drawSea(); drawPort(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
+  drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
   drawPortArrow(); drawBurst(); drawStick();

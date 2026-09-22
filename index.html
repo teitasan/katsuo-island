@@ -1335,8 +1335,12 @@ function manageWorld(dt){
   const target=Math.round(14*(1+(SEA.countMax-1)*p)), DESP=1000;
   for(let i=S.schools.length-1;i>=0;i--){
     const s=S.schools[i];
-    const near=Math.hypot(s.cx-PORT.x,s.cy-PORT.y)<SEA.portClear*0.8;
-    if(s.alive<=0 || near || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){ S.totalFish-=s.alive; S.schools.splice(i,1); }
+    /* 港へ入り込んだ群れは片づけるが、消すのは画面の外にいるときだけ。
+       見えているものを消すと、釣っている最中に群れが忽然と消える */
+    const offScreen = Math.abs(s.cx-B.x)>VW/2+s.rx*s.k+24 || Math.abs(s.cy-B.y)>VH/2+s.ry*s.k+24;
+    const inPort = Math.hypot(s.cx-PORT.x,s.cy-PORT.y)<SEA.portClear*0.8;
+    if(s.alive<=0 || (inPort&&offScreen) || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){
+      S.totalFish-=s.alive; S.schools.splice(i,1); }
   }
   let guard=0;
   const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
@@ -1381,6 +1385,11 @@ function updateSchools(dt){
     if(lr>0 && di<lr){                          // 集魚：船の方へ舵を切らせる
       const w=lf/12*(1-di/lr);
       tx+=dx/di*w; ty+=dy/di*w; react=Math.max(react,Math.min(1,w/1.4));
+    }
+    const pdx=s.cx-PORT.x, pdy=s.cy-PORT.y, pd=Math.hypot(pdx,pdy)||1;
+    if(pd<SEA.portClear){                       // 港は避ける。岸へ寄った群れは自分から沖へ向き直す
+      const w=2.4*(1-pd/SEA.portClear);
+      tx+=pdx/pd*w; ty+=pdy/pd*w; react=Math.max(react,Math.min(0.9,w));
     }
     if(di<78){                                  // 逃走：少しだけ進路を変える程度に留める
       const w=1.3*(1-di/78);

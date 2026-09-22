@@ -1402,7 +1402,8 @@ function manageWorld(dt){
     const s=S.schools[i];
     /* 港へ入り込んだ群れは片づけるが、消すのは画面の外にいるときだけ。
        見えているものを消すと、釣っている最中に群れが忽然と消える */
-    const offScreen = Math.abs(s.cx-B.x)>VW/2+s.rx*s.k+24 || Math.abs(s.cy-B.y)>VH/2+s.ry*s.k+24;
+    const cm=camPos();
+    const offScreen = Math.abs(s.cx-cm.x)>VW/2+s.rx*s.k+24 || Math.abs(s.cy-cm.y)>VH/2+s.ry*s.k+24;
     const inPort = Math.hypot(s.cx-PORT.x,s.cy-PORT.y)<SEA.portClear*0.8;
     if(s.alive<=0 || (inPort&&offScreen) || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){
       S.totalFish-=s.alive; S.schools.splice(i,1); }
@@ -2026,6 +2027,10 @@ function drawPortArrow(){
 /* すべてのワールド描画の原点。航海中は船と一致し、入港中だけ島へずれる。
    ここを船のままにしておくと、カメラがずれた側の端が画面外と判定されて消える */
 let camX=0, camY=0;
+/* 船に付いているもの（竿・糸・網・閃光）はここを基準に描く。
+   VW/2 を直に使うとカメラが動いたとき船だけ置いていかれる */
+function boatSX(){ return VW/2+(S.boat.x-camX); }
+function boatSY(){ return VH/2+(S.boat.y-camY); }
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
    画面を粗い升目に切って、1升に DENS_CAP 匹より多くは描かない。
@@ -2118,7 +2123,7 @@ function drawFisher(fm){
 }
 function drawBoat(){
   const b=boats[S.up.hull-1], B=S.boat;
-  const sx=Math.round(VW/2+(B.x-camX)), sy=Math.round(VH/2+(B.y-camY))+bobPx;
+  const sx=Math.round(boatSX()), sy=Math.round(boatSY())+bobPx;
   ctx.globalAlpha=.32; ctx.fillStyle='#04202f';
   ctx.beginPath(); ctx.ellipse(sx,sy+5,b.len/2+7,7,0,0,TAU); ctx.fill();
   ctx.globalAlpha=1;
@@ -2169,7 +2174,8 @@ function drawBoil(){
 function drawLines(){
   if(netGear()) return;                       // 網のときは竿を出さない
   const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
-  const by0=VH/2+bobPx, HULL_BOT=4;
+  const bx=Math.round(boatSX()), by=Math.round(boatSY());
+  const by0=by+bobPx, HULL_BOT=4;
   for(const fm of S.crew){
     if(fm.pose===1) continue;
     const dir=fm.row===0?1:-1;
@@ -2177,8 +2183,8 @@ function drawLines(){
     if(eff<=0.02) continue;
     const nrod=Math.min(fm.rod||0, ROD_MAX);       // 元の1本＋追加ぶん。最大3本（両手＋口）
     for(let k=0;k<=nrod;k++){
-      const x0=Math.round(VW/2+fm.tipx)+(k?((k&1)?-((k+1)>>1):((k+1)>>1)):0);
-      const y0=Math.round(VH/2+fm.tipy)+bobPx-(k?((k+1)>>1):0);
+      const x0=Math.round(bx+fm.tipx)+(k?((k&1)?-((k+1)>>1):((k+1)>>1)):0);
+      const y0=Math.round(by+fm.tipy)+bobPx-(k?((k+1)>>1):0);
       const len=Math.max(2,Math.round((fm.lineLen-k)*eff)), sl=fm.lineSlant+k*1.3*(k&1?-1:1);
       let lx=x0, ly=y0;
       for(let i=1;i<=len;i++){
@@ -2192,7 +2198,7 @@ function drawLines(){
   }
   ctx.strokeStyle='rgba(236,247,252,.8)'; ctx.lineWidth=1;
   for(const p of S.parts){
-    const tx=Math.round(VW/2+p.fm.tipx)+.5, ty=Math.round(VH/2+p.fm.tipy)+bobPx+.5;
+    const tx=Math.round(bx+p.fm.tipx)+.5, ty=Math.round(by+p.fm.tipy)+bobPx+.5;
     const px2=Math.round(p.x+ox)+.5, py2=Math.round(p.y+oy)+.5;
     ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(px2,py2); ctx.stroke();
     const ai=((Math.round(p.a/TAU*ANG)%ANG)+ANG)%ANG;
@@ -2200,7 +2206,7 @@ function drawLines(){
   }
   for(const fl of S.flash){                      // 竿先に収まった瞬間の光
     const u=fl.t/.16, r=1+u*3.5;
-    const x=Math.round(VW/2+fl.fm.tipx), y=Math.round(VH/2+fl.fm.tipy)+bobPx;
+    const x=Math.round(bx+fl.fm.tipx), y=Math.round(by+fl.fm.tipy)+bobPx;
     ctx.globalAlpha=(1-u)*.9;
     ctx.fillStyle='#fff6dd';
     ctx.fillRect(x-r,y,r*2,1); ctx.fillRect(x,y-r,1,r*2);
@@ -2291,7 +2297,7 @@ function drawTrawl(){
 function drawNet(){
   if(S.gear!=='seine') return;
   const B=S.boat, N=S.net, ox=VW/2-camX, oy=VH/2-camY;
-  const cx=VW/2, cy=VH/2+bobPx, R=netR(), Ry=R*NET.flat;
+  const cx=boatSX(), cy=boatSY()+bobPx, R=netR(), Ry=R*NET.flat;
   if(!navBoost()){
     const pulling=N.phase==='pull';
     const u=pulling ? 1-N.t/NET.pull : 1-Math.min(1,N.t/Math.max(.001,netCycle()));
@@ -2358,7 +2364,7 @@ function drawBurst(){
   ctx.globalAlpha=(1-u)*(1-u)*(REDUCE?.16:peak);
   ctx.fillStyle=gold?'#ffe9b0':'#ffffff';
   ctx.fillRect(0,0,VW,VH);
-  const cx=VW/2, cy=VH/2+bobPx;
+  const cx=boatSX(), cy=boatSY()+bobPx;
   ctx.globalAlpha=(1-u)*(b.kind==='cont'?.6:.85);
   ctx.fillStyle=gold?'#f2b32c':'#eaf3f4';
   const r0=14+u*150, len=30*(1-u);               // 放射線

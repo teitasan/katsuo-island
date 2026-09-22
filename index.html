@@ -921,15 +921,17 @@ function buildPortRing(){
   portRing=c;
 }
 
-/* 港の絵の中で船着場がどこかを、世界座標のオフセットで返す */
+/* 港の絵のどの画素を世界の原点に置くか。ここが島の位置を決める唯一の値で、
+   船をどこに舫うか（PORT.dock）とは切り離してある */
 const PORT_ANCHOR={x:PORT_W-46, y:PORT_H/2};
+function portOrigin(){ return {x:PORT.x-PORT_ANCHOR.x, y:PORT.y-PORT_ANCHOR.y}; }
 /* 陸の当たり。buildPort の陸（スプライトの x:0〜150, y:26〜174）を世界座標に直したもの。
    絵を描き変えたらここも合わせる。margin は汀線の岩のぶんの余白 */
 const LAND={ sx0:0, sy0:26, sx1:150, sy1:PORT_H-26, margin:5 };
 function landRect(){
-  const ox=PORT.x-PORT_ANCHOR.x+PORT.dock.x, oy=PORT.y-PORT_ANCHOR.y+PORT.dock.y;
-  return {x0:LAND.sx0+ox-LAND.margin, y0:LAND.sy0+oy-LAND.margin,
-          x1:LAND.sx1+ox+LAND.margin, y1:LAND.sy1+oy+LAND.margin};
+  const o=portOrigin();
+  return {x0:LAND.sx0+o.x-LAND.margin, y0:LAND.sy0+o.y-LAND.margin,
+          x1:LAND.sx1+o.x+LAND.margin, y1:LAND.sy1+o.y+LAND.margin};
 }
 /* 陸に入り込んだ点を、いちばん近い岸へ押し戻すぶんを返す。
    毎フレーム止めているので食い込みは1フレームぶんしかなく、最短の辺＝入ってきた辺になる */
@@ -1200,7 +1202,7 @@ function netPower(){                       // 表示用の本/秒（1周期あ�
    さわる数字はこのブロックに全部ある。バランスはここだけ見ればいい。 */
 const PORT={
   x:0, y:0,            // 島の位置。ここが世界の原点で、遠いほど良い漁場になる
-  dock:{x:34, y:2},    // 船着場。着岸するとここへ吸い寄せられる
+  dock:{x:0, y:22},    // 船着場。着岸するとここへ吸い寄せられる。桟橋の南側に横付けする位置
   r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
   out:110              // 出港で船着場からここまで離れたら操船を返す
@@ -1931,7 +1933,8 @@ function drawSea(){
 /* 港。海の上に1枚置くだけ。世界の原点に船着場が来るよう左上を逆算する */
 function drawPort(){
   const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
-  const x=PORT.x-PORT_ANCHOR.x+PORT.dock.x+ox, y=PORT.y-PORT_ANCHOR.y+PORT.dock.y+oy;
+  const o=portOrigin();
+  const x=o.x+ox, y=o.y+oy;
   if(x>VW||y>VH||x+PORT_W<0||y+PORT_H<0) return;
   ctx.drawImage(portCv, x|0, y|0);
 }

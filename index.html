@@ -923,6 +923,39 @@ function buildPortRing(){
 
 /* 港の絵の中で船着場がどこかを、世界座標のオフセットで返す */
 const PORT_ANCHOR={x:PORT_W-46, y:PORT_H/2};
+/* 陸の当たり。buildPort の陸（スプライトの x:0〜150, y:26〜174）を世界座標に直したもの。
+   絵を描き変えたらここも合わせる。margin は汀線の岩のぶんの余白 */
+const LAND={ sx0:0, sy0:26, sx1:150, sy1:PORT_H-26, margin:5 };
+function landRect(){
+  const ox=PORT.x-PORT_ANCHOR.x+PORT.dock.x, oy=PORT.y-PORT_ANCHOR.y+PORT.dock.y;
+  return {x0:LAND.sx0+ox-LAND.margin, y0:LAND.sy0+oy-LAND.margin,
+          x1:LAND.sx1+ox+LAND.margin, y1:LAND.sy1+oy+LAND.margin};
+}
+/* 陸に入り込んだ点を、いちばん近い岸へ押し戻すぶんを返す。
+   毎フレーム止めているので食い込みは1フレームぶんしかなく、最短の辺＝入ってきた辺になる */
+function landPush(x,y,L){
+  if(x<L.x0||x>L.x1||y<L.y0||y>L.y1) return null;
+  const dl=x-L.x0, dr=L.x1-x, dt=y-L.y0, db=L.y1-y;
+  const m=Math.min(dl,dr,dt,db);
+  if(m===dl) return {x:-dl, y:0};
+  if(m===dr) return {x:dr,  y:0};
+  if(m===dt) return {x:0, y:-dt};
+  return {x:0, y:db};
+}
+/* 船を陸に乗り上げさせない。船首と船の中心の2点で見る。
+   船尾まで見ると、大型船が桟橋に着けたとき尻が岸壁に刺さって着岸できなくなる */
+function keepOffLand(){
+  const B=S.boat, L=landRect(), half=boats[S.up.hull-1].len/2;
+  const pts=[[B.x,B.y],[B.x+Math.cos(B.hd)*half, B.y+Math.sin(B.hd)*half]];
+  let hit=null;
+  for(const [x,y] of pts){ const d=landPush(x,y,L); if(d && (!hit || Math.abs(d.x)+Math.abs(d.y)>Math.abs(hit.x)+Math.abs(hit.y))) hit=d; }
+  if(!hit) return;
+  B.x+=hit.x; B.y+=hit.y;
+  if(hit.x) B.vx=0;
+  if(hit.y) B.vy=0;
+  B.sp*=0.25;                                  // 擦った勢いを殺す
+  if(S.shake<0.35) S.shake=0.35;               // ぶつかった手応え
+}
 
 /* ---------------- 宝箱 ---------------- */
 let chestCv=null;
@@ -1778,6 +1811,7 @@ function updateBoat(dt){
   B.sp+=(target-B.sp)*(1-Math.pow(target>B.sp?BOAT_ACC:BOAT_DEC, dt));   // 止まるときだけ粘る
   B.vx=Math.cos(B.hd)*B.sp; B.vy=Math.sin(B.hd)*B.sp;
   B.x+=B.vx*dt; B.y+=B.vy*dt;
+  keepOffLand();
   if(Math.abs(B.vx)>4) B.face=B.vx>0?1:-1;
   B.bob+=dt*2.4;
   placeCrew();

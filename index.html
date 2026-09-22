@@ -1,0 +1,2466 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="船を走らせるだけ、釣りは全自動。3分でカツオを何本獲れるかを競うスコアアタック。">
+<meta name="theme-color" content="#03121d">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="カツオ一本釣り / Fish On! ~Pole & Line">
+<meta property="og:description" content="マウスで進む向きだけを決める3分間のスコアアタック。魚群に船べりを寄せると漁師が自動で一本釣りする。">
+<meta property="og:type" content="website">
+<title>カツオ一本釣り</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Reggae+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=M+PLUS+1+Code:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  /* 単一ビジュアルワールド（外洋・夜明けの海）に意図的にコミットしたゲーム画面。
+     ホストのテーマに関わらず同じ絵を出すため、全色を明示的に塗る。 */
+  :root{
+    --abyss:#03121d;
+    --deep:#072a42;
+    --sea:#0b3d5e;
+    --panel:#0a1f2e;
+    --panel2:#0e2a3d;
+    --line:#1c4b68;
+    --line2:#2c6c8f;
+    --foam:#eaf3f4;
+    --mist:#9db8c6;
+    --dim:#67879a;
+    --gold:#f2b32c;
+    --gold2:#c98a12;
+    --hata:#e0332c;
+    --kelp:#3fbfa0;
+    --wood:#3a2717;
+    --wood2:#54381f;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--abyss); color:var(--foam);
+    font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  .num{font-family:"M PLUS 1 Code",ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums}
+  .disp{font-family:"Reggae One","Zen Kaku Gothic New",system-ui,sans-serif; font-weight:400; letter-spacing:.02em}
+  @media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+
+  #stage{position:fixed; inset:0; display:grid; place-items:center;
+    background:radial-gradient(120% 100% at 50% 0%, #0a2436 0%, #03121d 70%)}
+  #frame{
+    position:relative; aspect-ratio:16/9;
+    width:min(100vw, calc(100vh * 16 / 9)); height:auto; max-height:100vh;
+    font-size:calc(min(100vw, 100vh * 16 / 9) / 64);
+    overflow:hidden; touch-action:none; cursor:crosshair;
+    box-shadow:0 0 0 1px #12374d, 0 30px 90px -30px #000;
+  }
+  #game{position:absolute; inset:0; width:100%; height:100%; display:block;
+    image-rendering:pixelated; image-rendering:crisp-edges;}
+
+  /* ---- HUD ---- */
+  #hud{position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .35s}
+  #hud.on{opacity:1}
+  .topbar{position:absolute; top:0; left:0; right:0; display:flex; align-items:flex-start;
+    justify-content:space-between; gap:1em; padding:.85em 1em}
+
+  .clock{display:flex; align-items:baseline; gap:.5em;
+    background:linear-gradient(180deg,rgba(10,31,46,.92),rgba(6,22,34,.92));
+    border:1px solid var(--line); border-left:3px solid var(--gold);
+    padding:.35em .8em .4em; border-radius:2px}
+  .clock .k{font-size:.72em; letter-spacing:.22em; color:var(--dim)}
+  .clock .v{font-size:1.7em; font-weight:700; letter-spacing:.02em}
+  .clock.warn .v{color:#ff8b6a}
+  .clock.warn{border-left-color:#ff8b6a}
+
+  .catch{position:relative; text-align:right; padding:.3em 1em .45em 1.9em;
+    background:linear-gradient(180deg,#e0332c,#b31f1c); transition:background .2s ease;
+    clip-path:polygon(1.5em 0, 100% 0, 100% 100%, 0 100%);
+    box-shadow:0 6px 22px -10px #000}
+  .catch .k{font-size:.7em; letter-spacing:.24em; color:#ffd9c9; display:block; line-height:1}
+  .catch .v{display:inline-block; transform-origin:100% 60%; font-size:2.1em; line-height:1.05;
+    color:#fff; text-shadow:0 2px 0 rgba(0,0,0,.28)}
+  .catch .u{font-size:.9em; margin-left:.15em}
+  .catch.hot{background:linear-gradient(180deg,#f7c245,#d1830d)}
+  .catch.hot .k{color:#6b4a10}
+
+  .lvbar{position:absolute; top:4.1em; left:50%; transform:translateX(-50%);
+    width:30%; min-width:12em}
+  .lvbar .row{display:flex; justify-content:space-between; align-items:baseline;
+    font-size:.66em; letter-spacing:.2em; color:var(--dim); margin-bottom:.35em}
+  .lvbar .track{height:.36em; background:rgba(3,18,29,.8); border:1px solid var(--line); border-radius:99px; overflow:hidden}
+  .lvbar .fill{height:100%; width:0%; background:linear-gradient(90deg,var(--kelp),var(--gold)); transition:width .18s linear}
+
+  .stats{position:absolute; left:1em; bottom:1em; display:flex; gap:.4em; flex-wrap:wrap; max-width:60%}
+  .chip{display:flex; align-items:center; gap:.35em; padding:.3em .5em;
+    background:rgba(10,31,46,.82); border:1px solid var(--line); border-radius:2px; opacity:.55}
+  .chip.has{opacity:1; border-color:var(--line2)}
+  .chip canvas{width:1.4em; height:1.4em; image-rendering:pixelated; display:block}
+  .chip b{font-size:.72em; font-weight:500; color:var(--mist); letter-spacing:.06em}
+  .chip i{font-style:normal; font-size:.82em; font-weight:700; color:var(--gold);
+    font-family:"M PLUS 1 Code",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .cap{color:#ff6b5c}
+  #stats.dbg .chip{pointer-events:auto; cursor:pointer; opacity:1;
+    border-color:var(--kelp); box-shadow:0 0 0 1px rgba(63,191,160,.25)}
+  #stats.dbg .chip:hover{background:rgba(63,191,160,.22)}
+  #stats.dbg .chip:active{transform:translateY(1px)}
+  .chip i u{text-decoration:none; font-size:.72em; font-weight:500; color:#c2ad83; margin-left:.1em}
+
+  .sonar{position:absolute; right:1em; bottom:1em; width:11em; text-align:right}
+  .sonar canvas{width:100%; aspect-ratio:1; display:block; border-radius:50%;
+    box-shadow:0 0 0 1px var(--line), 0 0 30px -8px rgba(63,191,160,.5), inset 0 0 20px rgba(0,0,0,.6)}
+
+  /* 入れ食い：メーターが溜まるほど縁が焼ける。溜まりきると判子が落ちる */
+  .fever{position:absolute; inset:0; pointer-events:none; opacity:0; z-index:2;
+    background:radial-gradient(115% 78% at 50% 50%, rgba(224,51,44,0) 42%, rgba(224,51,44,.34) 100%);
+    box-shadow:inset 0 0 4.2em 1.5em rgba(224,51,44,.8), inset 0 0 1.5em .45em rgba(255,146,86,.6)}
+  .fever.hot{animation:fvpulse .48s ease-in-out infinite alternate}
+  @keyframes fvpulse{from{filter:brightness(.72)} to{filter:brightness(1.4)}}
+  @media (prefers-reduced-motion:reduce){ .fever.hot{animation:none; filter:brightness(1)} }
+  /* 走りながら読ませる数字は置かない。連と確定だけ */
+  .fvbadge{position:absolute; top:6.2em; left:50%; display:flex; align-items:baseline; gap:.55em;
+    padding:.22em .9em .3em; opacity:0; transform:translate(-50%,0) scale(1.7); overflow:hidden;
+    background:linear-gradient(180deg,#4a0f0c,#2c0806); border:1px solid #ff8b6a; border-radius:2px;
+    box-shadow:0 .5em 1.5em -.4em rgba(224,51,44,.95);
+    transition:opacity .14s ease, transform .16s cubic-bezier(.2,1.5,.4,1)}
+  .fvbadge.on{opacity:1; transform:translate(-50%,0) scale(1)}
+  /* 背景がそのまま残り時間。もう一度当てると満タンに戻る */
+  .fvbar{position:absolute; left:0; top:0; bottom:0; width:100%;
+    background:linear-gradient(180deg,#e0332c,#a81d18)}
+  .fvbar.low{background:linear-gradient(180deg,#ff9a3c,#d1830d)}
+  .fvbadge b,.fvbadge em{position:relative; z-index:1}
+  .fvbadge b{font-size:.92em; font-weight:700; letter-spacing:.26em; color:#fff}
+  .fvbadge em{font-style:normal; font-size:.82em; font-weight:700; color:#ffd0a0; letter-spacing:.04em}
+  /* 発動の瞬間に大きく落ちる字 */
+  .fvbig{position:absolute; left:50%; top:29%; z-index:3; pointer-events:none; white-space:nowrap;
+    opacity:0; transform:translate(-50%,-50%) scale(3.2);
+    font-size:4.4em; letter-spacing:.08em; color:#fff;
+    text-shadow:0 0 .35em rgba(255,190,90,.95), 0 .05em 0 #a81d18, 0 .06em .02em #6b0f0c, 0 .3em 1em rgba(0,0,0,.75)}
+  .fvbig.go{animation:fvslam 1.1s cubic-bezier(.18,1.5,.3,1) both}
+  @keyframes fvslam{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(3.2)}
+    14%{opacity:1; transform:translate(-50%,-50%) scale(1)}
+    22%{transform:translate(-50%,-50%) scale(1.08)}
+    32%{transform:translate(-50%,-50%) scale(1)}
+    72%{opacity:1; transform:translate(-50%,-50%) scale(1)}
+    100%{opacity:0; transform:translate(-50%,-50%) scale(1.3)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .fvbig.go{opacity:1; transform:translate(-50%,-50%) scale(1)}
+  }
+
+  .toast{position:absolute; left:50%; top:38%; transform:translate(-50%,-50%);
+    display:flex; flex-direction:column; align-items:center; gap:.3em; text-align:center;
+    opacity:0; transition:opacity .3s}
+  .toast.on{opacity:1}
+  .toast .hd{font-size:1.1em; color:var(--gold); letter-spacing:.2em}
+  .toast .it{font-size:.85em; color:var(--foam); background:rgba(3,18,29,.7); padding:.15em .7em; border:1px solid var(--line)}
+
+  /* ---- overlays ---- */
+  .scrim{position:absolute; inset:0; display:none; place-items:center; padding:1.5em; cursor:default;
+    background:radial-gradient(120% 90% at 50% 40%, rgba(4,26,42,.86), rgba(2,12,20,.95));
+    -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); pointer-events:auto}
+  .scrim.on{display:grid}
+
+  .prompt{position:absolute; inset:0; display:grid; justify-items:center; align-content:space-between;
+    text-align:center; pointer-events:none; padding:2.2em 1.5em 2.6em; opacity:1;
+    transition:opacity .45s ease;
+    background:linear-gradient(180deg, rgba(3,18,29,.72) 0%, rgba(3,18,29,0) 38%, rgba(3,18,29,0) 62%, rgba(3,18,29,.66) 100%)}
+  .prompt.gone{opacity:0}
+  .tap{margin:0; font-size:.9em; letter-spacing:.24em; color:var(--mist);
+    animation:breathe 2.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{opacity:.55} 50%{opacity:1}}
+  @media (prefers-reduced-motion:reduce){ .tap{animation:none; opacity:.85} }
+  .kanji{font-size:.8em; letter-spacing:.7em; color:var(--gold); margin-bottom:.6em}
+  h1{margin:0; font-size:3.4em; line-height:1.1; text-wrap:balance;
+    color:var(--foam); text-shadow:0 .06em 0 #08202f, 0 .5em 1.4em rgba(0,0,0,.6)}
+  h1 em{font-style:normal; color:var(--hata)}
+  .tsub{margin:.25em 0 0; font-size:1em; letter-spacing:.06em; color:var(--mist)}
+  .tsub:empty{display:none}
+  .lede{margin:.9em auto 0; max-width:26em; font-size:.92em; line-height:1.85; color:var(--mist)}
+  .keys{display:flex; gap:1.4em; justify-content:center; margin-top:1.4em; flex-wrap:wrap}
+  .keys div{font-size:.78em; color:var(--dim)}
+  .keys b{display:block; font-size:1.15em; color:var(--foam); font-weight:500; margin-bottom:.2em}
+  button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
+  .go{margin-top:1.6em; padding:.7em 2.6em; font-size:1.05em; letter-spacing:.3em;
+    color:#2a0b09; background:linear-gradient(180deg,#ffc44a,#e09b12);
+    border-radius:2px; box-shadow:0 10px 26px -12px rgba(242,179,44,.8);
+    transition:transform .12s ease, box-shadow .12s ease}
+  .go:hover{transform:translateY(-2px); box-shadow:0 16px 30px -12px rgba(242,179,44,.9)}
+  .go:active{transform:translateY(0)}
+  :focus-visible{outline:2px solid var(--gold); outline-offset:3px}
+  .best{margin-top:.7em; font-size:.78em; letter-spacing:.18em; color:var(--dim)}
+
+  /* 網を揚げた瞬間の一括表示 */
+  .haul{position:absolute; left:50%; top:36%; transform:translate(-50%,-50%); z-index:3;
+    font-size:3.4em; font-weight:700; letter-spacing:.02em; color:var(--gold);
+    pointer-events:none; opacity:0; white-space:nowrap;
+    text-shadow:0 .04em 0 #6b4a10, 0 .18em .7em rgba(242,179,44,.65)}
+  .haul.go{animation:haulpop .95s cubic-bezier(.2,1.6,.35,1) both}
+  @keyframes haulpop{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(.35)}
+    16%{opacity:1; transform:translate(-50%,-50%) scale(1.18)}
+    30%{transform:translate(-50%,-50%) scale(1)}
+    72%{opacity:1; transform:translate(-50%,-50%) scale(1)}
+    100%{opacity:0; transform:translate(-50%,-62%) scale(1)}
+  }
+  @media (prefers-reduced-motion:reduce){ .haul.go{animation-duration:.5s} }
+
+  /* level up */
+  #levelup .box{text-align:center}
+  .lvhd{font-size:.78em; letter-spacing:.44em; color:var(--gold); margin-bottom:.25em}
+  .lvsub{font-size:1.5em; margin-bottom:1.1em; color:var(--foam)}
+  .cards{display:flex; gap:1em; justify-content:center; flex-wrap:wrap}
+  .card{position:relative; width:11.5em; padding:1.1em .9em 1em; text-align:center;
+    background:linear-gradient(180deg,#432e1b,#2c1d10);
+    border:1px solid #6b4a26; border-top:3px solid var(--gold); border-radius:2px;
+    box-shadow:0 18px 34px -18px #000; cursor:pointer;
+    transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease}
+  .card:hover{transform:translateY(-6px); border-color:var(--gold); box-shadow:0 26px 40px -18px #000}
+  .card .no{position:absolute; top:.4em; left:.55em; font-size:.66em; color:#9c7c50}
+  .card canvas{width:3.4em; height:3.4em; image-rendering:pixelated; margin:.2em auto .55em; display:block}
+  .card .nm{font-size:1.05em; font-weight:700; color:#ffe9bd}
+  .card .lv{font-size:.7em; letter-spacing:.16em; color:var(--gold); margin-top:.15em}
+  .card .val{display:flex; align-items:baseline; justify-content:center; gap:.3em; flex-wrap:wrap;
+    margin-top:.6em; font-family:"M PLUS 1 Code",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .card .val s{text-decoration:none; font-size:1em; color:#a4855c}
+  .card .val em{font-style:normal; color:#8a6f4a; font-size:.9em}
+  .card .val b{font-size:1.6em; line-height:1; color:var(--gold); font-weight:700}
+  .card .val i{font-style:normal; font-size:.78em; color:#c7ab82}
+  .card .ef{font-size:.76em; color:#e2cda6; margin-top:.5em; line-height:1.5}
+  .card .fl{font-size:.7em; color:#a98f6b; margin-top:.5em; line-height:1.5}
+  .card.max{opacity:.55}
+
+  /* result */
+  #result .box{text-align:center; min-width:min(30em,90%)}
+  .rhd{font-size:.78em; letter-spacing:.5em; color:var(--dim)}
+  .score{font-size:4.6em; line-height:1; color:var(--gold); margin:.1em 0 .05em;
+    text-shadow:0 .04em 0 #6b4a10, 0 .3em 1.2em rgba(242,179,44,.35)}
+  .score span{font-size:.32em; letter-spacing:.1em; margin-left:.2em; color:var(--foam)}
+  .rank{font-size:1.15em; color:var(--foam); margin-top:.2em}
+  .rank small{display:block; font-size:.6em; color:var(--mist); margin-top:.35em; letter-spacing:.06em}
+  .grow{margin-top:.9em; font-size:.95em; color:var(--mist);
+    font-family:"M PLUS 1 Code",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .grow s{text-decoration:none; color:var(--dim)}
+  .grow b{font-size:1.45em; color:var(--gold); margin:0 .1em}
+  .grow em{font-style:normal; color:var(--hata); font-weight:700; margin-left:.4em}
+  .rrow{display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:1em 1.2em; margin:1.3em auto 0; max-width:22em}
+  .rrow div{font-size:.72em; color:var(--dim); letter-spacing:.1em}
+  .rrow b{display:block; font-size:1.45em; color:var(--foam); font-weight:500; letter-spacing:0;
+    font-family:"M PLUS 1 Code",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+  .rrow b span{font-size:.5em; color:var(--mist); margin-left:.1em}
+  .rrow em{display:block; font-style:normal; font-size:.92em; color:#4f6c7d; letter-spacing:0; margin-top:.1em}
+  .newbest{display:inline-block; margin-top:.7em; padding:.2em .9em; font-size:.72em; letter-spacing:.28em;
+    color:#fff; background:var(--hata)}
+
+  /* 位置指定は外側で行う。#perf 自身に font-size を持たせると em の基準が変わってしまう */
+  #perfwrap{position:absolute; left:1em; top:6.9em; pointer-events:none}
+  #perf{padding:.45em .6em; background:rgba(4,20,32,.82); border:1px solid var(--line);
+    border-left:3px solid var(--kelp); border-radius:2px;
+    font-family:"M PLUS 1 Code",ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-variant-numeric:tabular-nums; font-size:.62em; line-height:1.65; color:var(--mist);
+    white-space:pre; letter-spacing:.02em}
+  #perf b{color:var(--foam); font-weight:700}
+  #perf i{font-style:normal; color:var(--kelp)}
+  #perf u{text-decoration:none; color:var(--dim)}
+  #perf .hot{color:#ff8b6a}
+  .dbgbtn{margin-top:.35em; pointer-events:auto; padding:.3em .8em; font-size:.62em; letter-spacing:.14em;
+    color:var(--kelp); background:rgba(4,20,32,.85); border:1px solid var(--kelp); border-radius:2px}
+  .dbgbtn:hover{color:#0a1f2e; background:var(--kelp)}
+  .mute{position:absolute; left:1em; top:4em; pointer-events:auto; width:2em; height:2em;
+    display:grid; place-items:center; color:var(--dim); font-size:1em;
+    border:1px solid var(--line); background:rgba(10,31,46,.7); border-radius:2px}
+  .mute:hover{color:var(--foam)}
+  /* Esc または左上のボタンで開く。開いている間は時間も止まる */
+  #menu .box{text-align:center; min-width:min(18em,80%)}
+  .mhd{font-size:.78em; letter-spacing:.5em; color:var(--dim); margin-bottom:1.4em}
+  .mrow{display:flex; flex-direction:column; gap:.7em}
+  .mbtn{padding:.65em 1.4em; font-size:.95em; letter-spacing:.2em; color:var(--foam);
+    border:1px solid var(--line); background:rgba(10,31,46,.7); border-radius:2px;
+    transition:border-color .12s ease, color .12s ease}
+  .mbtn:hover{border-color:var(--gold); color:#fff}
+  .mbtn b{float:right; font-weight:700; color:var(--gold); letter-spacing:.1em}
+  .mbtn.off b{color:#4a6577}
+  .mnote{margin-top:1.3em; font-size:.7em; letter-spacing:.14em; color:var(--dim)}
+  @media (max-width:640px){
+    .lvbar{width:40%}
+    .stats{max-width:52%}
+  }
+</style>
+<div id="stage">
+  <div id="frame">
+    <canvas id="game" width="480" height="270"></canvas>
+
+    <div id="hud">
+      <div class="topbar">
+        <div class="clock" id="clock">
+          <span class="k" id="lblTime">ノコリ</span><span class="v num" id="time">3:00</span>
+        </div>
+        <div class="catch">
+          <span class="k" id="lblCatch">ギョカク</span>
+          <span class="v disp num" id="score">0</span><span class="u" id="lblCatchUnit">本</span>
+        </div>
+      </div>
+
+      <div class="lvbar">
+        <div class="row"><span id="lvlabel">NEXT</span><span class="num" id="lvnum">0 / 9</span></div>
+        <div class="track"><div class="fill" id="lvfill"></div></div>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="sonar">
+        <canvas id="radar" width="340" height="340"></canvas>
+      </div>
+
+      <div class="fvbadge" id="fvbadge"><span class="fvbar" id="fvbar"></span><b id="fvlabel">入れ食い</b><em class="num" id="fvround">1連</em></div>
+      <div class="fvbig disp" id="fvbig">入れ食い</div>
+      <div class="haul disp num" id="haul"></div>
+
+      <div class="toast" id="toast"><div class="hd">宝箱</div><div id="toastitems"></div></div>
+    </div>
+
+    <div class="fever" id="fever"></div>
+    <button class="mute" id="mute" title="メニュー">☰</button>
+    <div id="perfwrap"><div id="perf" hidden></div>
+      <button class="dbgbtn" id="dbgFever" hidden>入れ食い</button></div>
+
+    <div class="prompt" id="prompt">
+      <div class="pTop">
+        <h1 class="disp"><span id="h1a">カツオ</span><em id="h1b">一本釣り</em></h1>
+        <div class="tsub" id="h1sub"></div>
+      </div>
+      <div class="pBottom">
+        <p class="tap" id="tapHint">動かして出港</p>
+        <div class="best" id="titlebest"></div>
+      </div>
+    </div>
+
+    <div class="scrim" id="levelup">
+      <div class="box">
+        <div class="lvhd" id="lblPickEyebrow">タイリョウ</div>
+        <div class="lvsub disp" id="lblPickHead">どれを積む？</div>
+        <div class="cards" id="cards"></div>
+      </div>
+    </div>
+
+    <div class="scrim" id="menu">
+      <div class="box">
+        <div class="mhd" id="lblMenu">キュウケイ</div>
+        <div class="mrow">
+          <button class="mbtn" id="mGear">漁法<b id="mGearV">一本釣り</b></button>
+          <button class="mbtn" id="mSound">音<b id="mSoundV">ON</b></button>
+          <button class="mbtn" id="mRetry">やり直す</button>
+          <button class="mbtn" id="mClose">閉じる</button>
+        </div>
+        <div class="mnote" id="lblMenuNote">Esc</div>
+      </div>
+    </div>
+
+    <div class="scrim" id="result">
+      <div class="box">
+        <div class="rhd" id="lblResHead">リョウ シュウリョウ</div>
+        <div class="score disp num" id="rscore">0<span>本</span></div>
+        <div class="rank" id="rrank"></div>
+        <div class="grow num" id="rgrow"></div>
+        <div id="rbestwrap"></div>
+        <div class="rrow" id="rstats"></div>
+        <button class="go disp" id="retry">もう一度</button>
+        <div class="best" id="rbest"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   カツオ一本釣り  —  3分スコアアタック
+   船を動かすだけ。釣りは自動。一定本数ごとにランダム3択で強化。
+   アセットは全てコード生成のピクセルアート（外部画像なし）。
+   ============================================================ */
+
+const VW = 480, VH = 270;                 // 内部解像度（ピクセルアート基準）
+const M_PER_PX = 2;                       // 魚探の距離表示用（1px = 2m）
+const GAME_TIME = 180;
+
+/* ================= 文言 ================= */
+const STR={
+ja:{
+ 'title.h1a':'カツオ','title.h1b':'一本釣り','title.sub':'',
+ 'title.tap':'動かして出港','title.best':'自己ベスト {n}本',
+ 'hud.time':'ノコリ','hud.catch':'ギョカク','hud.catchUnit':'本','hud.next':'NEXT',
+ 'hud.fever':'入れ食い','hud.round':'{n}連',
+ 'pick.eyebrow':'タイリョウ','pick.head':'どれを積む？',
+ 'up.crew.name':'漁師','up.crew.short':'漁師','up.crew.fl':'漁師が3人増える<br>釣り座が空くまで待機',
+ 'up.hull.name':'船体','up.hull.short':'船体','up.hull.fl':'釣り座と漁獲範囲が広がる',
+ 'up.rate.name':'釣具','up.rate.short':'釣具','up.rate.fl':'釣りの効率が上がる','up.rate.fl.net':'網の目が細かくなる<br>取りこぼしが減る',
+ 'up.engine.name':'機関','up.engine.short':'機関','up.engine.fl':'船の移動速度が上がる',
+ 'up.sonar.name':'魚群探知機','up.sonar.short':'魚探','up.sonar.fl':'ミニマップに<br>映る範囲が広がる',
+ 'up.lure.name':'集魚装置','up.lure.short':'集魚','up.lure.fl':'魚群が船に寄ってくる<br>入れ食いの時間が長くなる',
+ 'pick.lvCrew':'漁師 +3人','pick.lv':'Lv{a} → Lv{b}',
+ 'pick.efCrew':'うち待機 {a}人　釣り座 {b}人','pick.efBerth':'釣り座 {b}人',
+ 'pick.efHull':'{a}t → {b}t船',
+ 'unit.crew':'人','unit.rate':'本/秒','unit.knot':'ノット','unit.km':'km','unit.m':'m','unit.none':'なし',
+ 'chest.1':'宝箱','chest.3':'当たり','chest.5':'大当たり',
+ 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}',
+ 'res.head':'リョウ シュウリョウ','res.scoreUnit':'本',
+ 'rank.1':'見習い','rank.1.fl':'まだ竿が重い。',
+ 'rank.2':'一人前','rank.2.fl':'群れを見つける目はできた。',
+ 'rank.3':'舵取り','rank.3.fl':'船べりが賑やかになってきた。',
+ 'rank.4':'漁労長','rank.4.fl':'海の色で群れが読める。',
+ 'rank.5':'竿頭','rank.5.fl':'船が一本釣りの機械になった。',
+ 'rank.6':'伝説の竿頭','rank.6.fl':'この海の話は語り草になる。',
+ 'res.grow':'漁獲力 {a} → {b} 本/秒','res.growX':'×{c}','res.newbest':'自己ベスト更新',
+ 'res.from':'{v} から','res.retry':'もう一度','res.best':'自己ベスト {n}本',
+ 'menu.head':'キュウケイ','menu.sound':'音','menu.on':'ON','menu.off':'OFF','menu.retry':'やり直す','menu.close':'閉じる',
+ 'menu.gear':'漁法','gear.pole':'一本釣り','gear.seine':'巻き網','gear.trawl':'曳き網'
+},
+en:{
+ 'title.h1a':'FISH','title.h1b':'ON!','title.sub':'~Pole & Line',
+ 'title.tap':'Move to cast off','title.best':'BEST {n}',
+ 'hud.time':'TIME','hud.catch':'CATCH','hud.catchUnit':'','hud.next':'NEXT',
+ 'hud.fever':'ON FIRE','hud.round':'CHAIN {n}',
+ 'pick.eyebrow':'BIG CATCH','pick.head':'What comes aboard?',
+ 'up.crew.name':'Crew','up.crew.short':'Crew','up.crew.fl':'Three more hands<br>They stand by if no berth is free',
+ 'up.hull.name':'Hull','up.hull.short':'Hull','up.hull.fl':'More berths and a wider catch area',
+ 'up.rate.name':'Tackle','up.rate.short':'Tackle','up.rate.fl':'Fishing gets more efficient','up.rate.fl.net':'A finer mesh<br>Fewer fish slip through',
+ 'up.engine.name':'Engine','up.engine.short':'Engine','up.engine.fl':'The boat moves faster',
+ 'up.sonar.name':'Sonar','up.sonar.short':'Sonar','up.sonar.fl':'A wider scope on the minimap',
+ 'up.lure.name':'Chum Rig','up.lure.short':'Chum','up.lure.fl':'Schools come to the boat<br>Runs on fire last longer',
+ 'pick.lvCrew':'+3 crew','pick.lv':'Lv{a} → Lv{b}',
+ 'pick.efCrew':'{a} standing by · {b} berths','pick.efBerth':'{b} berths',
+ 'pick.efHull':'{a}t → {b}t boat',
+ 'unit.crew':'','unit.rate':'fish/s','unit.knot':'kn','unit.km':'km','unit.m':'m','unit.none':'none',
+ 'chest.1':'CHEST','chest.3':'GOOD HAUL','chest.5':'JACKPOT',
+ 'chest.item':'{name} up','chest.itemN':'{name} ×{n}',
+ 'res.head':'TRIP END','res.scoreUnit':'fish',
+ 'rank.1':'Apprentice','rank.1.fl':'The pole still feels heavy.',
+ 'rank.2':'Deckhand','rank.2.fl':"You've got an eye for the schools now.",
+ 'rank.3':'Helmsman','rank.3.fl':'The rail is getting crowded.',
+ 'rank.4':'Fishing Master','rank.4.fl':'You read the schools by the color of the water.',
+ 'rank.5':'Top Rod','rank.5.fl':'The boat has become a machine.',
+ 'rank.6':'Legendary Top Rod','rank.6.fl':"They'll tell stories about this trip.",
+ 'res.grow':'RATE {a} → {b} fish/s','res.growX':'×{c}','res.newbest':'NEW BEST',
+ 'res.from':'from {v}','res.retry':'ONE MORE','res.best':'BEST {n}',
+ 'menu.head':'PAUSED','menu.sound':'Sound','menu.on':'ON','menu.off':'OFF','menu.retry':'RESTART','menu.close':'CLOSE',
+ 'menu.gear':'Gear','gear.pole':'Pole','gear.seine':'Seine','gear.trawl':'Trawl'
+}};
+let LANG='ja';                 // Playables では SDK の getLanguage で決める
+function t(k,p){
+  let v=(STR[LANG]&&STR[LANG][k]);
+  if(v===undefined) v=STR.ja[k];
+  if(v===undefined) return k;
+  if(p) for(const n in p) v=v.split('{'+n+'}').join(p[n]);
+  return v;
+}
+let NUMFMT=new Intl.NumberFormat('ja-JP');
+function fmt(n){ return NUMFMT.format(n); }
+function setLang(code){
+  LANG=(code&&STR[code])?code:'ja';
+  NUMFMT=new Intl.NumberFormat(LANG==='en'?'en-US':'ja-JP');
+}
+
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const rint=(a,b)=>Math.floor(rnd(a,b+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const TAU=Math.PI*2;
+
+function mkc(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;
+  const g=c.getContext('2d');g.imageSmoothingEnabled=false;return c;}
+function gx(c){const g=c.getContext('2d');g.imageSmoothingEnabled=false;return g;}
+function px(g,x,y,w,h,c){g.fillStyle=c;g.fillRect(x,y,w,h);}
+function line(g,x0,y0,x1,y1,c,th){ // 整数ピクセルの直線
+  th=th||1; const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
+  const sx=x0<x1?1:-1, sy=y0<y1?1:-1; let err=dx-dy, x=x0, y=y0;
+  g.fillStyle=c;
+  for(let i=0;i<200;i++){ g.fillRect(x,y,th,th);
+    if(x===x1&&y===y1)break; const e2=2*err;
+    if(e2>-dy){err-=dy;x+=sx;} if(e2<dx){err+=dx;y+=sy;} }
+}
+
+/* ---------------- カツオ（極小スプライト＋回転アトラス） ---------------- */
+const FISH_MAP=[
+  '#.....####...',
+  '##..#########',
+  '#############',
+  '##..#########',
+  '#.....####...'
+];
+const FISH_PAL=[
+  ['#2f739c','#12466a','#0c3752','#12466a','#2b6b91'],
+  ['#245f84','#0f3c5c','#0a3048','#0f3c5c','#215a7d'],
+  ['#1a4d6c','#0d3450','#092a40','#0d3450','#184868']
+];
+const FISH_ALPHA=[1,.88,.6], FISH_SCALE=[1,.92,.78];
+/* 釣り上げられて空中にいるカツオ。水中用とは用途が違うので別に持つ。
+   真上から見た暗い背中ではなく、横向きで腹の銀色が出る絵にする。 */
+const AIR_MAP=[
+  '.....####....',
+  '#...#########',
+  '##.##########',
+  '##.##########',
+  '#...#########',
+  '.....####....'
+];
+const AIR_PAL=['#1b4665','#275d84','#5798c2','#b7dcef','#f4fafd','#d2e4ef'];
+const ANG=24, CELL=16;   // 13x5 の回転に必要なのは13.9px。余白を詰めて合成面積を減らす
+let fishAtlas=null;
+
+function fishBase(d){
+  const w=13,h=5, pal=FISH_PAL[d];
+  const c=mkc(w,h), g=gx(c);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    if(FISH_MAP[y][x]!=='#') continue;
+    px(g,x,y,1,1,pal[y]);
+  }
+  if(d<2){                             // 背のツヤと両目
+    px(g,9,2,3,1, d===0?'#4291b9':'#2c6f95');
+    px(g,11,1,1,1,'#06202f'); px(g,11,3,1,1,'#06202f');
+  }
+  const s=FISH_SCALE[d];
+  if(s===1) return c;
+  const w2=Math.max(6,Math.round(w*s)), h2=Math.max(3,Math.round(h*s));
+  const c2=mkc(w2,h2), g2=gx(c2); g2.drawImage(c,0,0,w2,h2); return c2;
+}
+function fishAir(){
+  const w=13,h=6, c=mkc(w,h), g=gx(c);
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++)
+    if(AIR_MAP[y][x]==='#') px(g,x,y,1,1,AIR_PAL[y]);
+  px(g,7,3,1,1,'#8fc0dc'); px(g,9,3,1,1,'#8fc0dc');   // 体側の縞
+  px(g,10,1,1,1,'#0a2233');                            // 目
+  px(g,12,2,1,2,'#e8f4fb');                            // 口先の照り返し
+  return c;
+}
+function buildFishAtlas(){
+  fishAtlas=mkc(CELL*ANG, CELL*4);
+  const g=gx(fishAtlas);
+  for(let d=0;d<4;d++){
+    const base=d<3?fishBase(d):fishAir();
+    for(let a=0;a<ANG;a++){
+      g.save();
+      g.globalAlpha=d<3?FISH_ALPHA[d]:1;
+      g.translate(a*CELL+CELL/2, d*CELL+CELL/2);
+      g.rotate(a/ANG*TAU);
+      g.drawImage(base, -base.width/2, -base.height/2);   // 丸めるとセル中心から0.5pxずれて端が欠ける
+      g.restore();
+    }
+  }
+  /* 魚は毎フレーム数千枚出る。転送元が canvas のままだと1枚ごとに取り込み直しが要る。
+     ImageBitmap にしておくと絵は1pxも変わらないまま、その取り込みが消える。 */
+  if(typeof createImageBitmap==='function')
+    createImageBitmap(fishAtlas).then(b=>{ fishAtlas=b; }).catch(()=>{});
+}
+
+/* ---------------- 漁船（Lv1〜Lv5・独立生成） ---------------- */
+const HULL_LEN=[52,68,88,112,144];
+const SEAT_GAP=8;
+const boats=[];
+
+function buildBoat(lv){
+  const len=HULL_LEN[lv-1];
+  const W=len+14, H=46, railY=22, waterY=34;
+  const c=mkc(W,H), g=gx(c);
+  const x0=5, x1=W-5;
+  const top=[], bot=[];
+  for(let x=x0;x<=x1;x++){
+    let t=railY, b=waterY+3;
+    const fb=(x-(x1-16))/16;                    // 船首側の反り
+    if(fb>0) t-=Math.round(4*fb*fb);
+    const fs=((x0+10)-x)/10;                    // 船尾側
+    if(fs>0) t-=Math.round(2*fs*fs);
+    const e=Math.min((x-x0)/4,(x1-x)/6,1);      // 前後の絞り
+    b-=Math.round((1-e)*6);
+    if(b<=t) b=t+1;
+    top[x]=t; bot[x]=b;
+    px(g,x,t,1,b-t,'#000');
+  }
+  g.globalCompositeOperation='source-atop';
+  px(g,0,0,W,railY+5,'#e9f0f3');                // 白い外板
+  px(g,0,railY+5,W,2,'#d8322a');                // 朱の帯
+  px(g,0,railY+7,W,H,'#15455f');                // 喫水下
+  px(g,0,waterY,W,H,'#0e3149');
+  g.globalCompositeOperation='source-over';
+  for(let x=x0;x<=x1;x++){
+    px(g,x,top[x],1,1,'#7c98a8');               // 船べりのハイライト
+    px(g,x,bot[x]-1,1,1,'#08202f');
+  }
+  // 舷側の細部
+  for(let x=x0+14;x<x1-8;x+=13){ px(g,x,railY+9,3,3,'#0b2b3d'); px(g,x+1,railY+9,1,1,'#123b52'); }
+  px(g,x1-14,railY+2,10,2,'#c2ced5');
+  // 操舵室（船尾）
+  const wh=[10,12,14,16,18][lv-1], hh=[9,11,12,14,16][lv-1], wx=x0+5;
+  px(g,wx,railY-hh,wh,hh,'#eef4f6');
+  px(g,wx,railY-hh,wh,1,'#b9c7cf');
+  px(g,wx,railY-1,wh,1,'#9fb0ba');
+  for(let i=0;i<Math.floor(wh/4);i++) px(g,wx+2+i*4,railY-hh+3,2,3,'#123b52');
+  px(g,wx-1,railY-hh-1,wh+2,1,'#d8322a');       // 屋根の朱線
+  // マストと大漁旗
+  const mx=wx+wh-2, my=railY-hh-1;
+  px(g,mx,my-9,1,9,'#8a6a3f');
+  px(g,mx+1,my-9,5,3,'#d8322a');
+  px(g,mx+1,my-6,4,2,'#f2b32c');
+  if(lv>=3){ px(g,mx-4,my-6,3,2,'#cfd9de'); px(g,mx-3,my-4,1,3,'#8a6a3f'); }
+  if(lv>=4){ px(g,wx+wh+2,railY-5,6,5,'#dbe4e8'); px(g,wx+wh+3,railY-4,4,1,'#123b52'); }
+  if(lv>=5){ px(g,x1-24,railY-4,7,4,'#dbe4e8'); px(g,x1-23,railY-3,5,1,'#123b52'); }
+  // 釣り座
+  const seatX=[];
+  for(let x=x0+13; x<=x1-14; x+=SEAT_GAP) seatX.push(x);
+  return {cv:c,W,H,railY,waterY,seatX,len};
+}
+
+/* ---------------- 漁師（2頭身・下半身なし・竿と糸を一体化） ---------------- */
+const FPAL=[
+  {shirt:'#22536f',shirt2:'#173c53',hat:'#d9b160',skin:'#e2a878',band:null},
+  {shirt:'#c86a2c',shirt2:'#9a4f1e',hat:null,skin:'#d69a6b',band:'#e0332c'},
+  {shirt:'#e3ebef',shirt2:'#b9c6cd',hat:'#1d4a68',skin:'#e8b98a',band:null}
+];
+const fishers=[[],[]];   // [row][pose] -> [palette]
+
+function buildFisher(pi,row,pose){
+  const W=24,H=34, c=mkc(W,H), g=gx(c);
+  const p=FPAL[pi];
+  const by = row===0 ? 17 : 26;          // 腰の切断面（near/far で位置を変える）
+  const hy = by-15;                      // 頭の上端
+  const cx = 7;
+  // 頭
+  px(g,cx-3,hy+1,7,6,p.skin);
+  px(g,cx-2,hy,5,1,p.skin);
+  px(g,cx+2,hy+3,1,1,'#3a2418'); px(g,cx,hy+3,1,1,'#3a2418');
+  if(p.hat){ px(g,cx-5,hy+1,11,1,p.hat); px(g,cx-3,hy-1,7,2,p.hat); px(g,cx-3,hy+1,7,1,'#00000033'); }
+  else if(p.band){ px(g,cx-3,hy+1,7,2,p.band); px(g,cx+3,hy+1,3,1,p.band); }
+  // 胴（短い）
+  px(g,cx-3,by-8,7,8,p.shirt);
+  px(g,cx-3,by-8,7,1,p.shirt2);
+  px(g,cx-3,by-2,7,2,p.shirt2);
+  // 腕と竿
+  let ax0,ay0,tx,ty;
+  if(pose===0){
+    if(row===0){ ax0=cx+4; ay0=by-6; tx=21; ty=by+13; }
+    else       { ax0=cx+4; ay0=by-7; tx=21; ty=by-19; }
+  }else{
+    ax0=cx+5; ay0=by-11; tx=22; ty=by-(row===0?16:24);
+  }
+  px(g,cx+3,ay0-1,3,3,p.skin);                       // 手
+  px(g,cx+1,ay0-2,3,4,p.shirt);                      // 腕
+  if(pose===1) px(g,cx+1,ay0-3,3,4,p.shirt);
+  line(g,ax0,ay0,tx,ty,'#caa268');                   // 一本釣り竿（リールなし）
+  line(g,ax0+1,ay0,tx,ty-1,'#8f6f42');
+  const lx=tx, ly=ty;
+  if(pose===0){                                      // 糸の出だしだけ。続きは水中側で動的に描く
+    const dy = row===0? 2 : -2;
+    line(g,lx,ly,lx,ly+dy,'#cfdde6');
+  }
+  if(row===1){                                       // 向こう舷は沈める
+    g.globalCompositeOperation='source-atop';
+    px(g,0,0,W,H,'rgba(4,32,52,.34)');
+    g.globalCompositeOperation='source-over';
+  }
+  return {cv:c, ax:cx, ay:by, tip:{x:lx-cx, y:ly-by}};
+}
+
+const netters=[[],[]];   // [row][pose] -> [palette]  網漁用
+
+/* 網漁の漁師。頭と胴は一本釣りと同じ人。腕から先だけ差し替える。
+   pose0 = 綱を構えて待つ / pose1 = 締め。後ろへ体重をかけて両手で手繰る */
+function buildNetter(pi,row,pose){
+  const W=24,H=34, c=mkc(W,H), g=gx(c);
+  const p=FPAL[pi];
+  const by = row===0 ? 17 : 26;
+  const hy = by-15;
+  const cx = 7;
+  const ln = pose===1 ? -1 : 0;                      // 締めは1px後ろへ反る
+  const dir = row===0 ? 1 : -1;                      // 手前舷は手前の水へ、向こう舷は奥へ
+  // 頭
+  px(g,cx-3+ln,hy+1,7,6,p.skin);
+  px(g,cx-2+ln,hy,5,1,p.skin);
+  px(g,cx+2+ln,hy+3,1,1,'#3a2418'); px(g,cx+ln,hy+3,1,1,'#3a2418');
+  if(p.hat){ px(g,cx-5+ln,hy+1,11,1,p.hat); px(g,cx-3+ln,hy-1,7,2,p.hat); px(g,cx-3+ln,hy+1,7,1,'#00000033'); }
+  else if(p.band){ px(g,cx-3+ln,hy+1,7,2,p.band); px(g,cx+3+ln,hy+1,3,1,p.band); }
+  // 胴
+  px(g,cx-3+ln,by-8,7,8,p.shirt);
+  px(g,cx-3+ln,by-8,7,1,p.shirt2);
+  px(g,cx-3+ln,by-2,7,2,p.shirt2);
+  // 腕と手。網そのものは船に1枚あるので、ここは人の仕草だけ
+  let hx,hy2,tx,ty;
+  if(pose===0){                                      // 構え：舷に手をかけて綱を握る
+    px(g,cx+1,by-7,4,3,p.shirt);
+    px(g,cx+4,by-6,3,3,p.skin);
+    hx=cx+6; hy2=by-5;
+    tx=cx+10; ty=by+dir*7;
+  }else{                                             // 締め：肘を引いて両手で手繰る
+    px(g,cx+2+ln,by-12,4,3,p.shirt);
+    px(g,cx+5+ln,by-12,3,3,p.skin);
+    px(g,cx+1+ln,by-6,4,3,p.shirt);
+    px(g,cx+4+ln,by-6,3,3,p.skin);
+    hx=cx+7+ln; hy2=by-11;
+    tx=cx+11; ty=by+dir*3;
+  }
+  line(g,hx,hy2,tx,ty,'#c9b184');                    // 舷を越える綱
+  line(g,hx,hy2+1,tx,ty+dir,'#8a7450');
+  if(pose===1){                                      // 手繰った綱がたるむ
+    px(g,cx+7+ln,by-9,1,1,'#c9b184');
+    px(g,cx+8+ln,by-7,1,1,'#8a7450');
+  }
+  if(row===1){
+    g.globalCompositeOperation='source-atop';
+    px(g,0,0,W,H,'rgba(4,32,52,.34)');
+    g.globalCompositeOperation='source-over';
+  }
+  return {cv:c, ax:cx, ay:by, tip:{x:tx-cx, y:ty-by}};
+}
+
+/* ---------------- 大漁旗（入れ食い中に船室の上で振る） ---------------- */
+const flagCv=[];
+function buildFlag(){
+  for(let f=0;f<4;f++){
+    const c=mkc(13,11), g=gx(c);
+    const ph=f/4*TAU;
+    px(g,0,1,1,10,'#6b4a26');                        // 竿
+    px(g,0,0,1,1,'#f2b32c');
+    for(let x=0;x<11;x++){                           // 旗はサインで波打たせる
+      const y=1+Math.round(Math.sin(ph+x*0.62)*1.4)+1;
+      px(g,1+x,y,1,2,'#e0332c');
+      px(g,1+x,y+2,1,1,'#f2b32c');
+      px(g,1+x,y+3,1,1,'#eaf3f4');
+      if(x===0) px(g,1,y,1,4,'#a81d18');
+    }
+    flagCv.push(c);
+  }
+}
+
+/* ---------------- 「+1」 ---------------- */
+let popNorm=null, popFv=null;
+function buildPop(){
+  const rects=[[2,3,3,1],[3,2,1,3],[6,1,1,5],[5,2,1,1],[5,5,3,1]];   // + と 1
+  const mk=(col)=>{
+    const c=mkc(9,7), g=gx(c);
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){            // 海に埋もれないよう縁取り
+      if(!dx&&!dy) continue;
+      for(const r of rects) px(g,r[0]+dx,r[1]+dy,r[2],r[3],'#0a2233');
+    }
+    for(const r of rects) px(g,r[0],r[1],r[2],r[3],col);
+    return c;
+  };
+  popNorm=mk('#ffffff'); popFv=mk('#ff5a4a');
+}
+
+/* ---------------- カモメ（真上から見た2コマ＋8方向） ---------------- */
+const GULL_MAP=[
+  ['..#..','..#..','#####','..#..','..#..'],    // 翼を広げた
+  ['.....','..#..','#####','..#..','.....']     // 打ち下ろし
+];
+const GANG=8, GCELL=8;
+let gullAtlas=null;
+function buildGull(){
+  gullAtlas=mkc(GCELL*GANG, GCELL*2);
+  const g=gx(gullAtlas);
+  for(let f=0;f<2;f++){
+    const base=mkc(5,5), b=gx(base), rows=GULL_MAP[f];
+    for(let y=0;y<5;y++) for(let x=0;x<5;x++)
+      if(rows[y][x]==='#') px(b,x,y,1,1, y===2?'#eaf3f4':'#cfdde6');
+    px(b,4,2,1,1,'#ffffff');                    // 頭
+    px(b,0,2,1,1,'#9db8c6');                    // 尾
+    for(let a=0;a<GANG;a++){
+      g.save();
+      g.translate(a*GCELL+GCELL/2, f*GCELL+GCELL/2);
+      g.rotate(a/GANG*TAU);
+      g.drawImage(base,-2.5,-2.5);
+      g.restore();
+    }
+  }
+}
+
+/* ---------------- 宝箱 ---------------- */
+let chestCv=null;
+function buildChest(){
+  const c=mkc(18,16), g=gx(c);
+  px(g,2,6,14,8,'#5a3a1c'); px(g,2,4,14,3,'#6b4522');
+  px(g,2,3,14,2,'#7d5228'); px(g,3,3,12,1,'#8f5f2e');
+  px(g,2,6,14,1,'#3a230f'); px(g,2,13,14,1,'#2b1a0b');
+  px(g,4,3,2,11,'#f2b32c'); px(g,12,3,2,11,'#f2b32c');
+  px(g,4,3,1,11,'#c98a12'); px(g,12,3,1,11,'#c98a12');
+  px(g,8,7,2,3,'#f2b32c'); px(g,8,8,1,1,'#5a3a1c');
+  px(g,1,14,16,1,'#00000055');
+  chestCv=c; return c;
+}
+
+/* ---------------- 強化アイコン（16x16） ---------------- */
+function buildIcon(id){
+  const c=mkc(16,16), g=gx(c);
+  const G='#f2b32c', W2='#eaf3f4', B='#123b52', R='#d8322a', S='#3fbfa0';
+  if(id==='crew'){
+    px(g,4,2,5,5,'#e2a878'); px(g,2,2,9,1,G); px(g,3,7,7,7,'#22536f');
+    line(g,9,8,15,14,'#caa268');
+  }else if(id==='hull'){
+    px(g,1,8,14,4,W2); px(g,1,11,14,2,B); px(g,3,4,5,4,W2); px(g,3,3,5,1,R);
+    px(g,2,7,12,1,'#7c98a8'); px(g,12,6,1,3,'#8a6a3f'); px(g,13,6,3,2,R);
+  }else if(id==='rate'){
+    px(g,2,7,8,3,'#2f80af'); px(g,1,6,2,5,'#2f80af'); px(g,9,7,2,1,'#d6e9f5');
+    line(g,4,2,12,10,'#caa268'); line(g,12,10,13,13,'#dfe9ee');
+    px(g,12,1,1,4,G); px(g,14,2,1,3,G);
+  }else if(id==='engine'){
+    px(g,6,2,4,12,'#8a99a3'); px(g,2,4,4,3,B); px(g,10,4,4,3,B);
+    px(g,2,9,4,3,B); px(g,10,9,4,3,B); px(g,5,6,6,4,'#cfd9de');
+    px(g,1,13,14,2,'#1a5c7d');
+  }else if(id==='sonar'){
+    g.strokeStyle=S; g.lineWidth=1; g.beginPath(); g.arc(8,8,6.5,0,TAU); g.stroke();
+    g.globalAlpha=.5; g.beginPath(); g.arc(8,8,3.5,0,TAU); g.stroke(); g.globalAlpha=1;
+    line(g,8,8,13,4,S); px(g,10,10,2,2,R); px(g,5,5,1,1,S);
+  }else if(id==='lure'){
+    g.strokeStyle=G; g.lineWidth=1;
+    g.beginPath(); g.arc(8,8,2.5,0,TAU); g.stroke();
+    g.globalAlpha=.6; g.beginPath(); g.arc(8,8,6,0,TAU); g.stroke(); g.globalAlpha=1;
+    px(g,7,7,3,2,W2); px(g,1,2,3,1,'#2f80af'); px(g,12,12,3,1,'#2f80af');
+    px(g,13,3,2,1,'#2f80af'); px(g,2,12,2,1,'#2f80af');
+  }
+  return c;
+}
+
+/* ---------------- 海タイル ---------------- */
+let seaDeep=null, seaSurf=null;
+function buildSea(){
+  const T=64;
+  seaDeep=mkc(T,T); let g=gx(seaDeep);
+  px(g,0,0,T,T,'#0a3550');
+  for(let i=0;i<120;i++){ const x=rint(0,T-1), y=rint(0,T-1);
+    px(g,x,y,2,1, Math.random()<.5?'#0b3a58':'#08324c'); }
+  for(let i=0;i<14;i++){ const x=rint(0,T-4), y=rint(0,T-1);
+    px(g,x,y,rint(3,6),1,'#0e4568'); }
+  seaSurf=mkc(T,T); g=gx(seaSurf);
+  for(let i=0;i<12;i++){ const x=rint(0,T-5), y=rint(0,T-1);
+    px(g,x,y,rint(2,5),1,'rgba(150,205,225,.13)'); }
+  for(let i=0;i<5;i++){ const x=rint(0,T-3), y=rint(0,T-1);
+    px(g,x,y,rint(1,3),1,'rgba(228,244,250,.22)'); }
+}
+
+/* ---------------- 強化定義 ---------------- */
+const UPG=[
+  {id:'crew', max:99, lv:()=>S.up.crew, apply:()=>{S.up.crew+=3;}},
+  {id:'hull', max:5, lv:()=>S.up.hull, apply:()=>{S.up.hull=Math.min(5,S.up.hull+1);}},
+  {id:'rate', max:10, lv:()=>S.up.rate, apply:()=>{S.up.rods=(S.up.rods||0)+rodGrant(); S.up.rate++;}},
+  {id:'engine', max:10, lv:()=>S.up.engine, apply:()=>{S.up.engine++;}},
+  {id:'sonar', max:6, lv:()=>S.up.sonar, apply:()=>{S.up.sonar++; dropChest();}},
+  {id:'lure', max:8, lv:()=>S.up.lure, apply:()=>{S.up.lure++;}}
+];
+const UPG_BY={}; UPG.forEach(u=>UPG_BY[u.id]=u);
+const UPG_IDS=[...new Set(UPG.map(u=>u.id))];   // 表示はこちら。プールは漁師が3枚あるため
+const ICONS={};
+
+/* ---------------- 状態 ---------------- */
+const S={
+  mode:'play', started:false, t:0, score:0, best:0, level:1, need:9, prog:0,
+  boat:{x:0,y:0,vx:0,vy:0,hd:0,sp:0,face:1,bob:0},
+  stick:{id:-1, on:false, ax:0, ay:0, tx:0, ty:0, f:0},
+  dir:{x:0,y:0,t:1}, aim:{x:0,y:0}, menu:false,
+  schools:[], chests:[], crew:[], parts:[], wake:[], rings:[], spray:[], flash:[], boil:[], boilAcc:0,
+  up:{crew:2,hull:1,rate:0,engine:0,sonar:1,lure:1},
+  seatX:[], seats:0, acc:1, chestT:26, sprayAcc:0, start:{crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1}, totalFish:0, choices:[], caught:0,
+  rt:0, shake:0, freeze:0, pop:0, pops:[], burst:null, inRange:0,
+  fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
+  gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
+  trawl:{x:0,y:0,vx:0,vy:0,hd:0}
+};
+const TONS=[9,19,49,119,199];
+/* 入れ食いは抽選ひとつだけ。1本釣るごとに回して、当たったら始まる。
+   入れ食い中も同じ抽選を回し続け、時間が切れる前にもう一度当てたら1連増えて時間が満タンに戻る。
+   当てられずに切れたら終わり。継続率という数字はどこにも無い。
+   「たくさん釣れている人ほど連チャンしやすい」は計算式ではなく、
+   釣った本数だけ抽選回数が増えることから勝手に出てくる：
+     20本 11%  50本 26%  100本 45%  200本 70%  300本 83%（＝1-(1-0.006)^n） */
+const FV_ENTRY=0.006;                // 1本あたりの当たり。突入も継続もこれ1つ
+const FV_SONAR_ODDS=0.18;            // 魚探Lv1つあたり当たりを何割上げるか（Lv6で約1.9倍）
+const FV_LOCK=4;                     // 終了後この秒数は抽選をしない
+const FV_MINFISH=45;                 // 竿の下にこれだけ魚がいないと突入しない（群れの尻尾で当たらないように）
+const FV_SEC=3;                      // 当たってから切れるまでの秒数
+const FV_LURE_SEC=1.0;               // 集魚Lv1つあたりの延長
+const FV_FADE=1.6;                   // 残りこの秒数から縁が引きはじめる
+const FV_RATE=1.2;                   // 入れ食い中の釣り速度の倍率。計算しきった漁獲力に掛ける
+const FV_STOP=0.12;                  // 突入の瞬間に世界を止める秒数
+let REDUCE=false;
+try{ REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+/* 釣具は「竿の本数」。稼働している漁師に1本ずつ配り、余ったら2本目3本目を持たせる。
+   竿を1本持つごとにその漁師は ROD 倍で釣るので、人手が少ないほど重複が進んで掛け算が効く。
+   ＝「漁師でゴリ押し」と「少数精鋭に竿を山盛り」が逆向きのビルドになる */
+const BARE=1.25;                     // 竿1本の1人あたり本/秒
+const ROD=4;                         // 追加の竿1本ぶんの倍率
+const ROD_MAX=2;                     // 1人が持てる追加の竿。元の1本と合わせて3本（両手＋口）が上限
+const ACC=2;                         // 全員が3本持ったあと、余った釣具1つぶんの加速
+/* 釣具1つで何本の竿が届くかは、積んだ時の稼働人数に比例する。
+   2〜5人なら1本、24人なら6本、32人なら8本。少ない人手なら1本ずつ重なって掛け算になり、
+   大所帯なら全員に行き渡る。積んだ時点で確定して S.up.rods に貯める（後から人が増えても減らない） */
+const ROD_FRAC=0.25;                 // 稼働人数のこの割合ぶんの竿が、釣具1つで届く
+function rodGrant(u){
+  u=u||S.up;
+  return Math.max(1, Math.round(Math.min(u.crew,stat.seats(u))*ROD_FRAC));
+}
+function rodSplit(u){                // n人に rods 本を配る。3本目まで配ってから、余りは加速に回す
+  u=u||S.up;
+  const n=Math.max(1,Math.min(u.crew,stat.seats(u))), R=u.rods||0;
+  const used=Math.min(R, n*ROD_MAX), over=R-used;
+  return {n, q:(used/n)|0, rem:used%n, over};
+}
+/* 舵は従来どおり「止まるか巡航か」。カーソルを画面の縁に着けている間だけ倍速になり、
+   そのあいだは一切釣れない。中間は作らない（説明が要らないように二択にする） */
+const NAV_DEAD=0.045;                // 画面幅に対する停船半径。従来と同じ
+const NAV_FAST=0.86;                 // 縁までの距離のこの割合より外で倍速
+const NAV_BOOST=2.0;                 // 倍速の倍率
+const BOAT_ACC=0.018;                // 加速の効き。小さいほど速く乗る
+const BOAT_DEC=0.25;                 // 減速の効き。船なので加速より効きにくい
+function navThrottle(u){ return u<NAV_FAST ? 1 : NAV_BOOST; }
+function navBoost(){ return (S.dir.t||1)>1.001; }   // 縁に着けている間
+function navEff(){ return navBoost() ? 0 : 1; }     // そのあいだは竿を上げている
+/* ================= 網漁 ================= */
+/* 一本釣りが「1匹ずつ連続」なのに対し、網は「周期でまとめて一気に」。
+   群れに乗せる操作も強化も入れ食いも全部そのまま。変わるのは獲り方のリズムだけ。
+   数値はここに全部集めてある。一本釣り側の定数には一切触れていない */
+const NET={
+  rMul:2.8,        // 網の半径 = 漁獲範囲rx の何倍
+  rCap:200,        // 網の半径の上限。これを超えると網が画面より大きくなって何も見えない
+  flat:0.62,       // 縦の潰し。海の見え方に合わせる
+  base:2.8,        // 稼働2人のときの1周期（秒）
+  crew:0.055,      // 稼働1人増えるごとに周期が縮む割合
+  minSec:1.2,      // 周期の下限
+  pull:0.9,        // 締めにかける秒数。この間に囲った魚が船へ寄る
+  take:0.55,       // 囲った魚のうち獲れる割合
+  takeRod:0.05,    // 竿1本あたり取り分が何割増えるか
+  takeCap:0.95     // 取り分の上限
+};
+function netGear(){ return S.gear==='seine'||S.gear==='trawl'; }
+function netR(){ return Math.min(NET.rCap, stat.rx()*NET.rMul); }
+
+/* ================= 曳き網 ================= */
+/* 網を船の後ろに曳き、通った水域の魚を連続で獲る。数字は一本釣りと同じで止まらない。
+   巻き網と逆で「速く動くほど掃く水が増える」。ただし速いほど目から逃げるので、
+   群れの上では緩め、群れの間は飛ばす、が素直な形になる */
+const TR={
+  w0:34,           // 稼働2人のときの網の口の幅（px）
+  wCrew:0.09,      // 稼働1人あたり口が何割広がるか
+  wHull:0.28,      // 船体Lv1つあたり口が何割広がるか
+  wCap:300,        // 口の幅の上限
+  depth:70,        // 網の長さ（口から袋の底まで）
+  bag:0.70,        // 袋の底の幅。口に対する割合。絞るほど壁から漏れて底に届かない
+  lip:0.30,        // 口の丸み（見た目だけ）
+  cod:12,          // 袋の底。ここまで流れ込んだら漁獲
+  lag:0.75,        // 船尾からどれだけ後ろに曳くか（船長に対する割合）
+  take:0.55,       // 目。基準の取り分
+  takeRod:0.05,    // 竿1本あたり取り分が何割増えるか
+  takeCap:0.95,
+  slip:0.35,       // 倍速のとき取り分がどれだけ落ちるか。上げるほど飛ばす利が減る
+  drag:0.35,       // 網が水から受ける抵抗。小さいほど早く止まる＝慣性が消える
+  rope:0.85        // 綱に引かれたぶんがどれだけ速度になるか。1で張りっぱなし、小さいと綱が食う
+};
+/* 網は船に刺さった棒ではなく、綱で曳かれている物体として持つ。
+   自分の慣性で真っ直ぐ行こうとし、綱の長さで引き戻される。
+   曲がると内側へ流れ、切り返すと振られる。船首から幾何で出すのをやめた */
+function trawlLen(){ return boats[S.up.hull-1].len*TR.lag+TR.depth*0.5; }
+function trawlHalfW(u){                        // u: 0=口 1=袋の底
+  const hw=trawlW()*0.5;
+  return hw*(TR.bag+(1-TR.bag)*Math.cos(Math.min(1,Math.max(0,u))*Math.PI/2));
+}
+function trawlReset(){
+  const B=S.boat, L=trawlLen();
+  S.trawl.x=B.x-Math.cos(B.hd)*L; S.trawl.y=B.y-Math.sin(B.hd)*L;
+  S.trawl.vx=0; S.trawl.vy=0; S.trawl.hd=B.hd;
+}
+function updateTrawlNode(dt){
+  const B=S.boat, T=S.trawl, L=trawlLen();
+  T.x+=T.vx*dt; T.y+=T.vy*dt;
+  const k=Math.pow(TR.drag, dt);                 // 水の抵抗
+  T.vx*=k; T.vy*=k;
+  let dx=T.x-B.x, dy=T.y-B.y, d=Math.hypot(dx,dy);
+  if(d<1e-4){ dx=-Math.cos(B.hd); dy=-Math.sin(B.hd); d=1; }
+  if(d>L){                                       // 綱いっぱい。引き戻して、その移動を速度にする
+    const nx=dx/d, ny=dy/d;
+    const cx=B.x+nx*L, cy=B.y+ny*L;
+    const inv=1/Math.max(dt,1e-4);
+    T.vx+=(cx-T.x)*inv*TR.rope; T.vy+=(cy-T.y)*inv*TR.rope;
+    T.x=cx; T.y=cy;
+  }
+  T.hd=Math.atan2(B.y-T.y, B.x-T.x);             // 口は進む側＝船のほうを向く
+}
+function trawlW(){
+  const n=Math.max(1,Math.min(S.up.crew,stat.seats()));
+  const w=TR.w0*(1+TR.wCrew*(n-2))*(1+TR.wHull*(S.up.hull-1));
+  return Math.min(TR.wCap, w)*(S.fever?FV_RATE:1);
+}
+function trawlTake(){
+  const sp=stat.speed(), over=Math.max(0,(S.boat.sp/Math.max(1,sp)-1)/(NAV_BOOST-1));
+  const base=Math.min(TR.takeCap, TR.take*(1+TR.takeRod*(S.up.rods||0)));
+  return base*(1-TR.slip*Math.min(1,over));
+}
+function trawlPos(){ return S.trawl; }     // 網の口の中心
+function netCycle(){                       // 漁師が増えるほど手繰りが速い
+  const n=Math.max(1,Math.min(S.up.crew,stat.seats()));
+  return Math.max(NET.minSec, NET.base/(1+NET.crew*(n-2))/(S.fever?FV_RATE:1));
+}
+function netTake(){                        // 釣具＝網の目。取りこぼしが減る
+  return Math.min(NET.takeCap, NET.take*(1+NET.takeRod*(S.up.rods||0)));
+}
+function netPower(){                       // 表示用の本/秒（1周期あたりの見込み）
+  return S.inRange*netTake()/Math.max(.001,netCycle()+NET.pull);
+}
+
+const stat = {
+  rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
+  speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1+0.045*(u.hull-1));},
+  turn:(u)=>{u=u||S.up; return 5.0*Math.pow(1.10,u.engine)*(1-0.03*(u.hull-1));},
+  sonar:(u)=>250*Math.pow(1.32,(u||S.up).sonar-1),
+  lureR:(u)=>{u=u||S.up; return u.lure===0?0:150+70*u.lure;},
+  lureF:()=>S.up.lure*3.4,
+  seats:(u)=>boats[(u||S.up).hull-1].seatX.length*2,
+  power:(u)=>{const {n,q,rem,over}=rodSplit(u);       // 船全体の本/秒
+    return BARE*(rem*Math.pow(ROD,q+1)+(n-rem)*Math.pow(ROD,q))*Math.pow(ACC,over);},
+  rx:()=>HULL_LEN[S.up.hull-1]/2+24,
+  ry:()=>42
+};
+/* 表示は Lv ではなく実数で。漁師=稼働/総数、船体=最大乗船人数、魚探と集魚=初期比 */
+const SONAR_BASE=250, LURE_BASE=220;
+function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(2)+t('unit.km') : Math.round(m)+t('unit.m'); }
+function valOf(id,u){
+  let r={n:'',u:''};
+  switch(id){
+    case 'crew': {                       // 素直に総人数。釣り座からあふれている間だけ赤
+      const over=u.crew>stat.seats(u);
+      r={n:String(u.crew), h:over?'<span class="cap">'+u.crew+'</span>':String(u.crew), u:t('unit.crew'), cap:over};
+      break;
+    }
+    case 'hull':   r={n:String(stat.seats(u)), u:t('unit.crew')}; break;
+    case 'rate': {
+      if(netGear()){                                // 網では釣具＝網の目。取り分で見せる
+        const tk=Math.min(NET.takeCap, NET.take*(1+NET.takeRod*(u.rods||0)));
+        r={n:Math.round(tk*100)+'%', u:''}; break;
+      }
+      const v=stat.power(u);                        // 船全体の本/秒。序盤は小さいので小数を残す
+      r={n: v<100? v.toFixed(1) : fmt(Math.round(v)), u:t('unit.rate')}; break; }
+    case 'engine': r={n:(stat.speed(u)*0.25).toFixed(1), u:t('unit.knot')}; break;
+    case 'sonar':  r={n:'+'+Math.round((stat.sonar(u)/SONAR_BASE-1)*100)+'%', u:''}; break;
+    case 'lure':   r = u.lure===0 ? {n:t('unit.none'), u:''}
+                     : {n:'+'+Math.round((stat.lureR(u)/LURE_BASE-1)*100)+'%', u:''}; break;
+  }
+  if(!r.h) r.h=r.n;
+  return r;
+}
+function nextUp(id){
+  const u=Object.assign({},S.up);
+  if(id==='crew') u.crew+=3;
+  else if(id==='hull') u.hull=Math.min(5,u.hull+1);
+  else { if(id==='rate') u.rods=(u.rods||0)+rodGrant(); u[id]++; }
+  return u;
+}
+function loadBest(){ try{return parseInt(localStorage.getItem('ippon.best')||'0',10)||0;}catch(e){return 0;} }
+function saveBest(v){ try{localStorage.setItem('ippon.best',String(v));}catch(e){} }
+function loadGear(){ try{const v=localStorage.getItem('ippon.gear'); return (v==='seine'||v==='trawl')?v:'pole';}catch(e){return 'pole';} }
+function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
+</script>
+
+<script>
+"use strict";
+/* ================= アセット構築 ================= */
+function initAssets(){
+  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag();
+  for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
+  for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
+    for(let p=0;p<2;p++) for(let i=0;i<3;i++){
+      fishers[r][p][i]=buildFisher(i,r,p);
+      netters[r][p][i]=buildNetter(i,r,p);
+    } }
+  UPG_IDS.forEach(id=>ICONS[id]=buildIcon(id));
+}
+
+/* ================= 魚群 ================= */
+const schoolRadius=n=>Math.min(140,Math.sqrt(n)*5.0);   // 上限で頭打ちにして、大群ほど密にする
+/* カモメは完全に飾り。群れより広く回るので、魚が見えるより先に居場所が知れる。
+   数が群れの規模に比例するので「多い＝大きい」の予告になる */
+const GULL={min:140, k:3.4, max:14, lo:1.15, hi:1.95};
+function makeGulls(n0){
+  if(n0<GULL.min) return null;
+  const k=Math.min(GULL.max, Math.round(Math.sqrt(n0)/GULL.k));
+  const out=[];
+  for(let i=0;i<k;i++) out.push({a:rnd(0,TAU), w:rnd(.22,.5)*(Math.random()<.5?-1:1),
+    r:rnd(GULL.lo,GULL.hi), ph:rnd(0,TAU), fs:rnd(5,9)});
+  return out;
+}
+const PSTEP=4, PN=104;            // 先頭の軌跡を4px刻みで416pxぶん保持する
+/* 表に出さない副効果の係数（1レベルあたり） */
+const TUNE={ lureSchoolSize:0.12, sonarChestRate:0.15 };
+function makeSchool(x,y,count){
+  const rx=schoolRadius(count), ry=rx*0.6;
+  const ang=rnd(0,TAU), ca=Math.cos(ang), sa=Math.sin(ang);
+  const hx=x+ca*rx, hy=y+sa*rx;   // x,y は群れの胴体中心。先頭はその前方
+  const s={x:hx, y:hy, cx:x, cy:y, ca:ang, ang, hd:ang, sp:rnd(9,18), rx, ry,
+    turn:0, k:1, pulse:rnd(0,TAU), pi:0, pfrac:0,
+    path:new Float32Array(PN*5), alive:count, n0:count, fish:new Array(count), gulls:makeGulls(count)};
+  for(let i=0;i<PN;i++){                       // 初期軌跡はまっすぐ後ろへ
+    const b=(((0-i)%PN)+PN)%PN*5;
+    s.path[b]=hx-ca*i*PSTEP; s.path[b+1]=hy-sa*i*PSTEP;
+    s.path[b+2]=ca; s.path[b+3]=sa; s.path[b+4]=ang;
+  }
+  for(let i=0;i<count;i++){
+    const a=rnd(0,TAU), u=Math.pow(Math.random(),0.72), r=Math.random();   // 0.5が一様。大きいほど中心が濃い
+    const ox=Math.cos(a)*u*rx;
+    s.fish[i]={d:rx-ox, oy:Math.sin(a)*u*ry,      // d=先頭からの弧長距離
+      dd:(r<.3?2:(r<.66?1:0)),
+      ph:rnd(0,TAU), ps:rnd(2.2,4.4), alive:true, wx:hx, wy:hy, a:ang};
+  }
+  s.fish.sort((p,q)=>q.dd-p.dd);
+  return s;
+}
+function manageWorld(dt){
+  const B=S.boat, p=S.t/GAME_TIME;
+  const target=14+Math.floor(p*10), DESP=1000;
+  for(let i=S.schools.length-1;i>=0;i--){
+    const s=S.schools[i];
+    if(s.alive<=0 || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){ S.totalFish-=s.alive; S.schools.splice(i,1); }
+  }
+  let guard=0;
+  const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
+  while(S.schools.length<target && S.totalFish<cap && guard++<6){
+    const q=p*p;   // 規模は後半で一気に伸ばす。序盤は小さい群れを次々に乗り換えるテンポを優先
+    const n=Math.round(rnd(50+q*850, 150+q*1450)*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
+    // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
+    // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
+    const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);
+    S.schools.push(makeSchool(B.x+Math.cos(a)*d, B.y+Math.sin(a)*d, n));
+    S.totalFish+=n;
+  }
+  if(S.mode!=='play' || !S.started) return;
+  S.chestT-=dt;
+  if(S.chestT<=0){
+    const sn=S.up.sonar;
+    S.chestT=rnd(24,34)/(1+TUNE.sonarChestRate*(sn-1));   // 隠し効果：魚探で宝箱が見つかりやすくなる
+    if(S.chests.length<2+((sn-1)>>1)){
+      const a=rnd(0,TAU), d=rnd(300,560);
+      S.chests.push({x:B.x+Math.cos(a)*d, y:B.y+Math.sin(a)*d, life:52, ph:rnd(0,TAU)});
+    }
+  }
+  for(let i=S.chests.length-1;i>=0;i--){
+    const c=S.chests[i]; c.life-=dt; c.ph+=dt*2;
+    if(c.life<=0 || Math.hypot(c.x-B.x,c.y-B.y)>DESP){ S.chests.splice(i,1); continue; }
+    if(Math.hypot(c.x-B.x,c.y-B.y)<36){ S.chests.splice(i,1); openChest(); }
+  }
+}
+function updateSchools(dt){
+  const B=S.boat, lr=stat.lureR(), lf=stat.lureF();
+  for(const s of S.schools){
+    if(s.gulls) for(const gu of s.gulls) gu.a+=gu.w*dt;
+    s.turn=clamp(s.turn+rnd(-1,1)*dt*2.6,-0.7,0.7);
+    s.ang+=s.turn*dt;
+    s.pulse+=dt*1.7;
+    const sp=s.sp*(1+0.18*Math.sin(s.pulse));
+    let tx=Math.cos(s.ang), ty=Math.sin(s.ang), react=0;
+    const dx=B.x-s.cx, dy=B.y-s.cy, di=Math.hypot(dx,dy)||1;
+    if(lr>0 && di<lr){                          // 集魚：船の方へ舵を切らせる
+      const w=lf/12*(1-di/lr);
+      tx+=dx/di*w; ty+=dy/di*w; react=Math.max(react,Math.min(1,w/1.4));
+    }
+    if(di<78){                                  // 逃走：少しだけ進路を変える程度に留める
+      const w=1.3*(1-di/78);
+      tx-=dx/di*w; ty-=dy/di*w; react=Math.max(react,Math.min(0.35,w));  // 角速度は上げすぎない（周回防止）
+    }
+    let dh=Math.atan2(ty,tx)-s.hd;
+    while(dh>Math.PI) dh-=TAU;
+    while(dh<-Math.PI) dh+=TAU;
+    // 旋回半径が群れの大きさを下回らないよう角速度を抑える。
+    // ただし船に反応しているときは強く曲がってよい
+    const wmax=sp/(40+s.rx*1.2)*(1+react*5);
+    s.hd+=clamp(dh,-wmax*dt,wmax*dt);
+    const c0=Math.cos(s.hd), s0=Math.sin(s.hd);
+    s.x+=c0*sp*dt; s.y+=s0*sp*dt;               // 動くのは先頭だけ
+    s.pfrac+=sp*dt;
+    while(s.pfrac>=PSTEP){                      // 4px進むごとに軌跡を1点刻む
+      s.pfrac-=PSTEP; s.pi=(s.pi+1)%PN;
+      const b=s.pi*5;
+      s.path[b]=s.x; s.path[b+1]=s.y; s.path[b+2]=c0; s.path[b+3]=s0; s.path[b+4]=s.hd;
+    }
+    const kt=0.28+0.72*Math.sqrt(s.alive/s.n0);
+    s.k+=(kt-s.k)*Math.min(1,dt*0.8);
+    const k=s.k, P=s.path, pi=s.pi, pf=s.pfrac;
+    {                                           // 胴体の中心（判定・影・魚探はここを使う）
+      const t=(s.rx*k-pf)/PSTEP;
+      const i0=Math.min(PN-2,Math.max(0,t|0)), fr=t-i0;
+      const A=(((pi-i0)%PN)+PN)%PN*5, Bb=(((pi-i0-1)%PN)+PN)%PN*5;
+      s.cx=P[A]+(P[Bb]-P[A])*fr; s.cy=P[A+1]+(P[Bb+1]-P[A+1])*fr; s.ca=P[A+4];
+    }
+    const fs=s.fish;   // 魚探に実位置で映すため、画面外の群れも位置を更新する
+    for(let i=0;i<fs.length;i++){
+      const f=fs[i]; if(!f.alive) continue;
+      f.ph+=f.ps*dt;
+      const w=Math.sin(f.ph);
+      const t=(f.d*k+w*2.2-pf)/PSTEP;           // 先頭から何px後ろの軌跡上にいるか
+      // t<0 は最新サンプルより前方。i0=0 のまま fr を負にして外挿する
+      const i0=Math.min(PN-2,Math.max(0,t|0)), fr=t-i0;
+      const A=(((pi-i0)%PN)+PN)%PN*5, Bb=(((pi-i0-1)%PN)+PN)%PN*5;
+      const x=P[A]+(P[Bb]-P[A])*fr, y=P[A+1]+(P[Bb+1]-P[A+1])*fr;
+      const c=P[A+2]+(P[Bb+2]-P[A+2])*fr, sn=P[A+3]+(P[Bb+3]-P[A+3])*fr;
+      const oy=f.oy*k+w*1.3;
+      f.wx=x-sn*oy; f.wy=y+c*oy;                // 軌跡の法線方向へ横オフセット
+      f.a=P[A+4]+w*0.24;
+    }
+  }
+}
+
+/* ================= 乗組員 ================= */
+function layoutCrew(){
+  const b=boats[S.up.hull-1];
+  S.seats=b.seatX.length*2;
+  const onboard=Math.min(S.up.crew,S.seats);
+  while(S.crew.length<onboard) S.crew.push({pal:rint(0,2), cd:rnd(0,.7), pose:0, pt:0, row:0, si:0,
+    lineLen:rint(8,13), lineSlant:rnd(-2.4,2.4)});
+  while(S.crew.length>onboard) S.crew.pop();
+  const {q,rem}=rodSplit();                      // 前のほうの rem 人が1本多く持つ
+  for(let k=0;k<S.crew.length;k++) S.crew[k].rod = q + (k<rem?1:0);
+  S.acc=Math.pow(ACC, rodSplit().over);          // 配りきれなかったぶんは全員の速さへ
+  const order=[], ns=b.seatX.length, mid=(ns-1)/2;
+  const byCenter=[];
+  for(let i=0;i<ns;i++) byCenter.push(i);
+  byCenter.sort((a,c)=>Math.abs(a-mid)-Math.abs(c-mid));
+  for(const i of byCenter){ order.push([0,i]); order.push([1,i]); }
+  for(let k=0;k<S.crew.length;k++){ S.crew[k].row=order[k][0]; S.crew[k].si=order[k][1]; }
+  placeCrew();
+}
+function placeCrew(){
+  const b=boats[S.up.hull-1], f=S.boat.face;
+  for(const fm of S.crew){
+    fm.lx=b.seatX[fm.si]-b.W/2 + (fm.row===1?4:0);
+    fm.ly=(fm.row===0?b.railY:b.railY+2)-b.waterY;
+    const sp=fsprite(fm);
+    fm.wx=f<0?-fm.lx:fm.lx;
+    fm.tipx=f<0?-(fm.lx+sp.tip.x):(fm.lx+sp.tip.x);
+    fm.tipy=fm.ly+sp.tip.y;
+  }
+}
+
+/* ================= 漁 ================= */
+function netCast(){
+  const B=S.boat, N=S.net, R=netR(), Ry=R*NET.flat, take=netTake();
+  N.held.length=0;
+  for(const s of S.schools){
+    if(Math.abs(s.cx-B.x)>R+s.rx*s.k+14 || Math.abs(s.cy-B.y)>Ry+s.rx*s.k+14) continue;
+    for(const f of s.fish){
+      if(!f.alive) continue;
+      const ex=(f.wx-B.x)/R, ey=(f.wy-B.y)/Ry;
+      if(ex*ex+ey*ey>1) continue;
+      if(Math.random()>take) continue;              // 網目から逃げる
+      f.alive=false; s.alive--; S.totalFish--;
+      N.held.push({x0:f.wx, y0:f.wy, a:f.a});
+    }
+  }
+  N.phase='pull'; N.t=NET.pull; N.flash=1;
+  sfxNet();
+}
+function netHaul(){
+  const N=S.net, n=N.held.length;
+  N.held.length=0; N.phase='wait'; N.t=netCycle();
+  if(n<=0) return;
+  S.score+=n; S.prog+=n; S.pop=1;
+  bang(n>=120?'chest':'lv'); sfxChest();
+  elHaul.classList.remove('go'); void elHaul.offsetWidth;
+  elHaul.textContent='+'+fmt(n); elHaul.classList.add('go');
+  // 抽選は1匹ごと。まとめて引くので 1-(1-p)^n で1回に畳む
+  const p=1-Math.pow(1-fvEntry(), n);
+  if(S.fever){ if(Math.random()<p) feverHit(); }
+  else if(S.fvLock<=0 && n>=FV_MINFISH && Math.random()<p) feverOn();
+  if(S.prog>=S.need) levelUp();
+}
+function updateNet(dt){
+  const B=S.boat, N=S.net, R=netR(), Ry=R*NET.flat;
+  let cnt=0;                                        // 囲える魚の数。入れ食いの判定にも使う
+  for(const s of S.schools){
+    if(Math.abs(s.cx-B.x)>R+s.rx*s.k+14 || Math.abs(s.cy-B.y)>Ry+s.rx*s.k+14) continue;
+    for(const f of s.fish){
+      if(!f.alive) continue;
+      const ex=(f.wx-B.x)/R, ey=(f.wy-B.y)/Ry;
+      if(ex*ex+ey*ey<=1) cnt++;
+    }
+  }
+  S.inRange=cnt;
+  N.flash=Math.max(0,N.flash-dt*3);
+  const want = N.phase==='pull' ? 1 : 0;            // 締めている間は全員が手繰る姿
+  if(S.crew.length && S.crew[0].pose!==want){ for(const fm of S.crew) fm.pose=want; placeCrew(); }
+  if(navEff()<=0.001) return;                       // 倍速中は網を上げている
+  N.t-=dt;
+  if(N.t>0) return;
+  if(N.phase==='pull') netHaul(); else netCast();
+}
+function updateTrawl(dt){
+  updateTrawlNode(dt);
+  const T=S.trawl;
+  const ca=Math.cos(T.hd), sa=Math.sin(T.hd);
+  const hd2=TR.depth*0.5, hw=trawlW()*0.5;
+  const take=trawlTake();
+  const back=-hd2+TR.cod;
+  const reach=Math.max(hw,hd2)+24;
+  let cnt=0;
+  /* 魚は網に取り込まない。泳いだまま網の中を相対的に後ろへ流れていき、
+     袋の底まで届いたぶんだけ漁獲になる。網が止まれば届かないし、
+     振り回せば横から出ていく。目から漏れた個体はそのまま泳ぎ続ける */
+  for(const sc of S.schools){
+    if(Math.abs(sc.cx-T.x)>reach+sc.rx*sc.k || Math.abs(sc.cy-T.y)>reach+sc.rx*sc.k) continue;
+    for(const f of sc.fish){
+      if(!f.alive) continue;
+      const dx=f.wx-T.x, dy=f.wy-T.y;
+      const lx=dx*ca+dy*sa;
+      if(lx>hd2 || lx<-hd2){ if(f.slip) f.slip=0; continue; }
+      const ly=-dx*sa+dy*ca;
+      const u=(hd2-lx)/TR.depth;
+      if(Math.abs(ly)>trawlHalfW(u)){ if(f.slip) f.slip=0; continue; }
+      cnt++;
+      if(lx>back) continue;                      // まだ袋の底に届いていない
+      if(f.slip) continue;                       // 目から漏れた個体
+      if(Math.random()>take){ f.slip=1; continue; }
+      f.alive=false; sc.alive--; S.totalFish--;
+      S.score++; S.prog++; S.pop=1;
+      if(S.pops.length<64 && Math.random()<.3) S.pops.push({x:f.wx, y:f.wy, t:0, fv:S.fever});
+      if(S.fever){
+        S.chain++;
+        if(Math.random()<fvEntry()) feverHit();
+      }
+      else if(S.fvLock<=0 && cnt>=FV_MINFISH && Math.random()<fvEntry()) feverOn();
+      if(S.prog>=S.need) levelUp();
+    }
+  }
+  S.inRange=cnt;
+  const want=((S.rt*4)|0)&1;
+  if(S.crew.length && S.crew[0].pose!==want){ for(const fm of S.crew) fm.pose=want; placeCrew(); }
+}
+function updateFishing(dt){
+  if(S.gear==='seine') return updateNet(dt);
+  if(S.gear==='trawl') return updateTrawl(dt);
+  const B=S.boat, rx=stat.rx(), ry=stat.ry(), eff=navEff();
+  const base=BARE*(S.acc||1)*(S.fever?FV_RATE:1)*eff;
+  const up=[], dn=[];
+  for(const s of S.schools){
+    if(Math.abs(s.cx-B.x)>rx+s.rx*s.k+14 || Math.abs(s.cy-B.y)>ry+s.rx*s.k+14) continue;
+    const fs=s.fish;
+    for(let i=0;i<fs.length;i++){
+      const f=fs[i]; if(!f.alive) continue;
+      const ex=(f.wx-B.x)/rx, ey=(f.wy-B.y)/ry;
+      if(ex*ex+ey*ey<=1) (f.wy<B.y?up:dn).push({f,s});
+    }
+  }
+  S.inRange=up.length+dn.length;                // 竿の下に今いる魚。入れ食いの判定に使う
+  if(eff<=0.001) return;                        // 飛ばしすぎ。竿は上がっている
+  for(const fm of S.crew){
+    if(fm.pose===1){ fm.pt-=dt; if(fm.pt<=0){ fm.pose=0; } }
+    fm.cd-=dt;
+    if(fm.cd>0) continue;
+    const own=fm.row===1?up:dn, other=fm.row===1?dn:up;
+    const src=own.length?own:other;
+    if(!src.length){ fm.cd=rnd(.03,.12); continue; }
+    const fx=B.x+fm.wx;
+    let bi=0, bd=1e9;
+    for(let i=0;i<src.length;i++){
+      const o=src[i], d=Math.abs(o.f.wx-fx)+Math.abs(o.f.wy-B.y)*0.55;
+      if(d<bd){ bd=d; bi=i; }
+    }
+    const o=src[bi]; src.splice(bi,1);
+    doCatch(fm,o);
+    fm.cd=(1/(base*Math.pow(ROD,fm.rod||0)))*rnd(.82,1.18);
+    if(S.mode!=='play') return;
+  }
+}
+function doCatch(fm,o){
+  o.f.alive=false; o.s.alive--; S.totalFish--; S.score++; S.prog++;
+  fm.pose=1; fm.pt=.28; placeCrew();
+  S.parts.push({x:o.f.wx, y:o.f.wy, x0:o.f.wx, y0:o.f.wy, t:0, dur:.28, a:o.f.a, d:o.f.dd, fm});
+  S.rings.push({x:o.f.wx, y:o.f.wy, t:0});
+  S.pop=1;                                       // ギョカクの数字を弾ませる
+  if(S.fever){
+    S.chain++;
+    if(Math.random()<fvEntry()) feverHit();       // 入れ食い中の当たり。1連増えて時間が戻る
+  }
+  else if(S.fvLock<=0 && S.inRange>=FV_MINFISH && Math.random()<fvEntry()) feverOn();  // 突入も同じ抽選
+  sfxCatch();
+  if(S.prog>=S.need) levelUp();
+}
+
+/* ================= 入れ食い ================= */
+function feverOn(){
+  S.fever=true; S.fvT=fvSec(); S.fvRound=1; S.fvPulse=1; S.chain=1;
+  S.freeze=FV_STOP;                              // 一瞬だけ世界を止める
+  sfxFever(); bang('fever');
+  elFvBig.classList.remove('go'); void elFvBig.offsetWidth; elFvBig.classList.add('go');
+  clearTimeout(feverOn._t);
+  feverOn._t=setTimeout(()=>elFvBig.classList.remove('go'),1150);
+}
+function fvEntry(){ return FV_ENTRY*(1+FV_SONAR_ODDS*(S.up.sonar-1)); }  // 魚探で当たりやすくなる
+function fvSec(){ return FV_SEC + (S.up.lure-1)*FV_LURE_SEC; }          // 集魚で1回が長くなる
+function feverHit(){                             // 期間中にもう一度当てた
+  S.fvRound++; S.fvT=fvSec(); S.fvPulse=1;
+  bang('cont'); sfxSure();
+}
+function updateFever(dt){
+  if(S.fvLock>0) S.fvLock-=dt;
+  if(!S.fever) return;
+  S.fvT-=dt;
+  if(S.fvT>0) return;
+  S.fever=false; S.fvT=0; S.fvLock=FV_LOCK;      // 終わりは無音。通常に戻るだけ
+  elFvBadge.style.transform='';
+}
+function bang(kind){                             // 決定的な瞬間の閃光と揺れ
+  const big=kind==='fever';
+  S.burst={t:0, dur:big?.7:(kind==='cont'?.34:(kind==='chest'?.55:.45)), kind, seed:rnd(0,TAU)};
+  S.shake=Math.min(big?1.35:1, S.shake+(big?1.35:(kind==='cont'?.45:(kind==='chest'?.8:1))));
+}
+
+/* ================= 強化 ================= */
+function rollChoices(){
+  const pool=UPG.filter(u=>u.lv()<u.max), out=[];
+  while(out.length<3 && pool.length) out.push(pool.splice(rint(0,pool.length-1),1)[0]);
+  while(out.length<3) out.push(UPG_BY.crew);
+  return out;
+}
+function levelUp(){
+  S.prog-=S.need; S.level++;
+  S.need=Math.round(9*Math.pow(1.28,S.level-1));
+  S.mode='levelup';
+  S.choices=rollChoices();
+  bang('lv'); sfxLevel();
+  clearTimeout(levelUp._t);                      // 閃光を見せてからカードを開く
+  levelUp._t=setTimeout(()=>{ if(S.mode==='levelup') showCards(); }, 340);
+}
+function applyUpgrade(u){ u.apply(); layoutCrew(); }
+function dropChest(){                            // 魚探を積んだ瞬間に1つ流れ着く
+  // 画面の外（対角で275px）に出す。魚探に映らないと探しようがないので範囲内には収める
+  const B=S.boat, a=rnd(0,TAU), d=Math.min(rnd(300,420), Math.max(300, stat.sonar()));
+  S.chests.push({x:B.x+Math.cos(a)*d, y:B.y+Math.sin(a)*d, life:52, ph:rnd(0,TAU)});
+}
+function openChest(){
+  const n = Math.random()<.70?1:(Math.random()<.73?3:5);
+  const got=[];
+  for(let i=0;i<n;i++){
+    const pool=UPG.filter(u=>u.lv()<u.max);
+    const u=pool.length?pick(pool):UPG_BY.crew;
+    u.apply(); got.push(t('up.'+u.id+'.name'));
+  }
+  layoutCrew(); bang('chest'); sfxChest();
+  const counts={};
+  got.forEach(g=>counts[g]=(counts[g]||0)+1);
+  toastEl.querySelector('.hd').textContent = t(n===5?'chest.5':(n===3?'chest.3':'chest.1'));
+  toastItems.innerHTML='';
+  Object.keys(counts).forEach(k=>{
+    const d=document.createElement('div'); d.className='it';
+    d.textContent = counts[k]>1 ? t('chest.itemN',{name:k,n:counts[k]}) : t('chest.item',{name:k});
+    toastItems.appendChild(d);
+  });
+  toastEl.classList.add('on');
+  clearTimeout(openChest._t);
+  openChest._t=setTimeout(()=>toastEl.classList.remove('on'),2600);
+}
+
+/* ================= 船 ================= */
+function updateBoat(dt){
+  const B=S.boat, sp=stat.speed();
+  let tx=0,ty=0;
+  tx=S.dir.x; ty=S.dir.y;
+  const want=Math.hypot(tx,ty);
+  const cruise=sp*clamp(S.dir.t==null?1:S.dir.t, 0, NAV_BOOST);
+  if(want>0){                             // 船首方位は最小旋回半径に縛られる
+    let dh=Math.atan2(ty,tx)-B.hd;
+    while(dh>Math.PI) dh-=TAU;
+    while(dh<-Math.PI) dh+=TAU;
+    const wmax=stat.turn()*(0.6+0.4*Math.min(NAV_BOOST,B.sp/Math.max(1,sp)));   // 停船中はやや舵が鈍る
+    B.hd+=clamp(dh,-wmax*dt,wmax*dt);
+  }
+  const target=want>0?cruise:0;           // 推力は船首方向のみ。横滑りはしない
+  B.sp+=(target-B.sp)*(1-Math.pow(target>B.sp?BOAT_ACC:BOAT_DEC, dt));   // 止まるときだけ粘る
+  B.vx=Math.cos(B.hd)*B.sp; B.vy=Math.sin(B.hd)*B.sp;
+  B.x+=B.vx*dt; B.y+=B.vy*dt;
+  if(Math.abs(B.vx)>4) B.face=B.vx>0?1:-1;
+  B.bob+=dt*2.4;
+  placeCrew();
+  const b=boats[S.up.hull-1];
+  // 航跡
+  const spd=Math.hypot(B.vx,B.vy);
+  const boost=navBoost();
+  if(spd>8 && Math.random()<dt*(boost?110:38)){
+    const back=-B.face*(b.len/2);
+    S.wake.push({x:B.x+back+rnd(-6,6), y:B.y+rnd(-3,4), t:0, r:boost?rnd(2,4.5):rnd(1,2.4)});
+  }
+  if(boost){
+    // 倍速中は竿を上げている。代わりに舳先が盛大に割れる
+    S.sprayAcc+=120*dt;
+    let n=Math.min(12,Math.floor(S.sprayAcc)); S.sprayAcc-=n;
+    const fx=B.face*(b.len/2-2);
+    while(n-->0){
+      const side=Math.random()<.5?-1:1;
+      S.spray.push({x:B.x+fx+rnd(-3,3), y:B.y+rnd(-1,2), big:1,
+        vx:B.face*rnd(12,40)+rnd(-8,8), vy:side*rnd(12,30), t:0, life:rnd(.35,.7)});
+    }
+  }else{
+    // 散水（活餌を撒く仕掛け）
+    S.sprayAcc+=S.crew.length*6*dt;
+    let n=Math.min(6,Math.floor(S.sprayAcc));
+    S.sprayAcc-=n;
+    while(n-->0 && S.crew.length){
+      const fm=pick(S.crew);
+      S.spray.push({x:B.x+fm.wx+rnd(-2,2), y:B.y+fm.ly+1,
+        vx:rnd(-6,6), vy:(fm.row===0?1:-1)*rnd(16,30), t:0, life:rnd(.3,.55)});
+    }
+  }
+}
+
+/* ================= パーティクル ================= */
+function updateParts(dt){
+  const B=S.boat;
+  for(let i=S.parts.length-1;i>=0;i--){
+    const p=S.parts[i]; p.t+=dt;
+    const u=p.t/p.dur;
+    if(u>=1){
+      S.flash.push({fm:p.fm, t:0});
+      if(S.pops.length<64) S.pops.push({x:B.x+p.fm.tipx, y:B.y+p.fm.tipy, t:0, fv:S.fever});
+      S.parts.splice(i,1); continue;
+    }
+    const tx=B.x+p.fm.tipx, ty=B.y+p.fm.tipy;
+    p.x=p.x0+(tx-p.x0)*u;
+    p.y=p.y0+(ty-p.y0)*u - Math.sin(u*Math.PI)*14;
+    p.a+=dt*10;
+  }
+  for(let i=S.rings.length-1;i>=0;i--){ const r=S.rings[i]; r.t+=dt; if(r.t>.36) S.rings.splice(i,1); }
+  for(let i=S.flash.length-1;i>=0;i--){ const f=S.flash[i]; f.t+=dt; if(f.t>.16) S.flash.splice(i,1); }
+  for(let i=S.pops.length-1;i>=0;i--){ const p=S.pops[i]; p.t+=dt; if(p.t>.55) S.pops.splice(i,1); }
+  for(let i=S.wake.length-1;i>=0;i--){ const w=S.wake[i]; w.t+=dt; if(w.t>1.1) S.wake.splice(i,1); }
+  for(let i=S.spray.length-1;i>=0;i--){
+    const s=S.spray[i]; s.t+=dt;
+    if(s.t>s.life){ S.spray.splice(i,1); continue; }
+    s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy*=0.94;
+  }
+  for(let i=S.boil.length-1;i>=0;i--){ const b=S.boil[i]; b.t+=dt; if(b.t>b.life) S.boil.splice(i,1); }
+  spawnBoil(dt);
+}
+/* 入れ食い中だけ、群れが水面で跳ねる（ナブラ）。判定には一切関わらない */
+const BOIL_MAX=160, BOIL_RATE=340;   // 同時に出る上限と、1秒あたりに跳ねる数
+const BOIL_R=120;                    // 船からこの距離までの魚だけが跳ねる（縦は海の見え方に合わせて潰す）
+function spawnBoil(dt){
+  if(!S.fever || S.boil.length>=BOIL_MAX) return;
+  const B=S.boat;
+  S.boilAcc += dt*(REDUCE?BOIL_RATE*0.3:BOIL_RATE);
+  let n=S.boilAcc|0; if(n<=0) return;
+  S.boilAcc-=n;
+  const cand=[], ry=BOIL_R*.62;
+  for(const s of S.schools){
+    if(s.alive<=0) continue;
+    const reach=s.rx*s.k+BOIL_R;
+    if(Math.abs(s.cx-B.x)>reach || Math.abs(s.cy-B.y)>reach) continue;
+    const fs=s.fish;
+    for(let i=0;i<fs.length;i++){
+      const f=fs[i]; if(!f.alive) continue;
+      const ex=(f.wx-B.x)/BOIL_R, ey=(f.wy-B.y)/ry;
+      if(ex*ex+ey*ey<=1) cand.push(f);
+    }
+  }
+  if(!cand.length) return;
+  while(n-->0 && S.boil.length<BOIL_MAX){
+    const f=cand[rint(0,cand.length-1)];
+    S.boil.push({x:f.wx+rnd(-2,2), y:f.wy+rnd(-1,1), t:0, life:rnd(.26,.42), k:rnd(.7,1.25), d:Math.random()<.5?1:-1});
+  }
+}
+</script>
+
+<script>
+"use strict";
+/* ================= 描画 ================= */
+let patDeep=null, patSurf=null, topGrad=null, bobPx=0;
+function initPatterns(){
+  patDeep=ctx.createPattern(seaDeep,'repeat');
+  patSurf=ctx.createPattern(seaSurf,'repeat');
+  topGrad=ctx.createLinearGradient(0,0,0,VH);
+  topGrad.addColorStop(0,'rgba(150,214,238,.07)');
+  topGrad.addColorStop(.55,'rgba(6,40,62,0)');
+  topGrad.addColorStop(1,'rgba(2,14,24,.22)');
+}
+function drawSea(){
+  const B=S.boat;
+  ctx.save();
+  ctx.translate(-(((B.x*.55)%64)+64)%64, -(((B.y*.55)%64)+64)%64);
+  ctx.fillStyle=patDeep; ctx.fillRect(0,0,VW+64,VH+64);
+  ctx.restore();
+  ctx.save();
+  const dx=B.x-S.t*8, dy=B.y-S.t*2.5;
+  ctx.translate(-((dx%64)+64)%64, -((dy%64)+64)%64);
+  ctx.fillStyle=patSurf; ctx.fillRect(0,0,VW+64,VH+64);
+  ctx.restore();
+  ctx.fillStyle=topGrad; ctx.fillRect(-5,-5,VW+10,VH+10);   // 揺れたぶんの余白まで塗る
+}
+let fishDrawn=0;
+/* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
+   画面を粗い升目に切って、1升に DENS_CAP 匹より多くは描かない。
+   重なって見えない個体を落とすだけなので、密度の見た目はほとんど変わらない。
+   DENS_CELL を大きく／DENS_CAP を小さくするほど軽くなって、群れが薄く見えはじめる */
+const DENS_CELL=6, DENS_CAP=2;
+const DENS_W=Math.ceil((VW+18)/DENS_CELL)+1, DENS_H=Math.ceil((VH+18)/DENS_CELL)+1;
+const densGrid=new Uint8Array(DENS_W*DENS_H);
+function drawSchools(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  fishDrawn=0;
+  densGrid.fill(0);
+  const k=1/TAU*ANG;
+  for(const s of S.schools){
+    const cx=s.cx+ox, cy=s.cy+oy, krx=s.rx*s.k, kry=s.ry*s.k;
+    const mg=krx+40;
+    if(cx<-krx-mg||cx>VW+krx+mg||cy<-kry-mg||cy>VH+kry+mg) continue;
+    // 群れの影は描かない。cx/cy/krx は画面外カリングの判定にだけ使う
+    const fs=s.fish;
+    for(let i=0;i<fs.length;i++){
+      const f=fs[i]; if(!f.alive) continue;
+      const x=f.wx+ox, y=f.wy+oy;
+      if(x<-9||x>VW+9||y<-9||y>VH+9) continue;
+      const gi=((y+9)/DENS_CELL|0)*DENS_W+((x+9)/DENS_CELL|0);
+      if(densGrid[gi]>=DENS_CAP) continue;          // ここはもう埋まっている
+      densGrid[gi]++;
+      const ai=((Math.round(f.a*k)%ANG)+ANG)%ANG;
+      ctx.drawImage(fishAtlas, ai*CELL, f.dd*CELL, CELL, CELL, (x-CELL/2)|0, (y-CELL/2)|0, CELL, CELL);
+      fishDrawn++;
+    }
+  }
+}
+function drawChests(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  for(const c of S.chests){
+    const x=Math.round(c.x+ox), y=Math.round(c.y+oy+Math.sin(c.ph)*1.5);
+    if(x<-30||x>VW+30||y<-30||y>VH+30) continue;
+    const g=ctx.createRadialGradient(x+9,y+8,2,x+9,y+8,26);
+    g.addColorStop(0,'rgba(242,179,44,.35)'); g.addColorStop(1,'rgba(242,179,44,0)');
+    ctx.fillStyle=g; ctx.fillRect(x-17,y-18,52,52);
+    ctx.drawImage(chestCv,x,y);
+  }
+}
+function drawWake(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  for(const w of S.wake){
+    const u=w.t/1.1;
+    ctx.globalAlpha=(1-u)*.5;
+    ctx.fillStyle='#dceef6';
+    ctx.fillRect(Math.round(w.x+ox), Math.round(w.y+oy+u*2), Math.round(w.r+u*3), 1);
+  }
+  ctx.globalAlpha=1;
+}
+function drawGulls(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  for(const s of S.schools){
+    const gs=s.gulls; if(!gs) continue;
+    const live=Math.ceil(gs.length*s.alive/s.n0);   // 魚が減ると鳥も減っていく
+    const R=s.rx*s.k;
+    for(let i=0;i<live;i++){
+      const gu=gs[i], rr=R*gu.r;
+      const x=s.cx+Math.cos(gu.a)*rr+ox;
+      const y=s.cy+Math.sin(gu.a)*rr*0.6+oy-7-Math.sin(S.rt*1.7+gu.ph)*2;
+      if(x<-8||x>VW+8||y<-8||y>VH+8) continue;
+      ctx.globalAlpha=.22; ctx.fillStyle='#04202f';
+      ctx.fillRect(Math.round(x), Math.round(y)+8, 1, 1);   // 水面の影で高さを出す
+      ctx.globalAlpha=1;
+      const dir=gu.a+(gu.w>0?Math.PI/2:-Math.PI/2);
+      const ai=((Math.round(dir/TAU*GANG)%GANG)+GANG)%GANG;
+      const fr=((S.rt*gu.fs+gu.ph)|0)&1;
+      ctx.drawImage(gullAtlas, ai*GCELL, fr*GCELL, GCELL, GCELL,
+        (x-GCELL/2)|0, (y-GCELL/2)|0, GCELL, GCELL);
+    }
+  }
+}
+function drawRings(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  ctx.strokeStyle='#dff0f6'; ctx.lineWidth=1;
+  for(const r of S.rings){
+    const u=r.t/.36, rr=2+u*8;
+    ctx.globalAlpha=(1-u)*.55;
+    ctx.beginPath(); ctx.ellipse(r.x+ox, r.y+oy, rr, rr*.5, 0,0,TAU); ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+function fsprite(fm){ return (netGear()?netters:fishers)[fm.row][fm.pose][fm.pal]; }
+function drawFisher(fm){
+  const sp=fsprite(fm);
+  ctx.drawImage(sp.cv, Math.round(fm.lx-sp.ax), Math.round(fm.ly-sp.ay));
+}
+function drawBoat(){
+  const b=boats[S.up.hull-1], B=S.boat;
+  const sx=Math.round(VW/2), sy=Math.round(VH/2)+bobPx;
+  ctx.globalAlpha=.32; ctx.fillStyle='#04202f';
+  ctx.beginPath(); ctx.ellipse(sx,sy+5,b.len/2+7,7,0,0,TAU); ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.save(); ctx.translate(sx,sy); if(B.face<0) ctx.scale(-1,1);
+  for(const fm of S.crew) if(fm.row===1) drawFisher(fm);
+  ctx.drawImage(b.cv, -Math.round(b.W/2), -b.waterY);
+  for(const fm of S.crew) if(fm.row===0) drawFisher(fm);
+  if(S.fever) ctx.drawImage(flagCv[(S.rt*11|0)&3], -Math.round(b.W/2)+9, -b.waterY+1);   // 船室の上で振る
+  ctx.restore();
+  const spd=Math.hypot(B.vx,B.vy);
+  if(spd>6){                                   // 船首の白波
+    const bx=sx+B.face*(b.len/2-2);
+    ctx.fillStyle='rgba(233,246,250,.7)';
+    for(let i=0;i<3;i++){
+      const t=(S.t*7+i*.33)%1;
+      ctx.fillRect(Math.round(bx-B.face*t*10), Math.round(sy+1+i), Math.round(2+t*4), 1);
+    }
+  }
+}
+function drawSpray(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  for(const s of S.spray){
+    const u=s.t/s.life;
+    ctx.globalAlpha=(1-u)*(s.big?1:.8);
+    ctx.fillStyle=s.big?'#f2fbff':'rgba(226,243,250,.7)';
+    const k=s.big?2:1;
+    ctx.fillRect(Math.round(s.x+ox), Math.round(s.y+oy), k, k);
+  }
+  ctx.globalAlpha=1;
+}
+function drawBoil(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  ctx.lineWidth=1;
+  for(const b of S.boil){
+    const u=b.t/b.life, x=Math.round(b.x+ox), y=Math.round(b.y+oy);
+    ctx.globalAlpha=(1-u)*.5;                      // 水面に広がる輪
+    ctx.strokeStyle='#d8f0fa';
+    const rr=(1+u*5)*b.k;
+    ctx.beginPath(); ctx.ellipse(x+.5, y+.5, rr, rr*.45, 0,0,TAU); ctx.stroke();
+    ctx.globalAlpha=(1-u)*.9;                      // 跳ねた粒。上がって落ちる
+    ctx.fillStyle='#e9f7fc';
+    const h=Math.sin(u*Math.PI)*4.5*b.k;
+    ctx.fillRect(x, Math.round(y-h), 1, 1);
+    ctx.fillRect(x+b.d, Math.round(y-h*.65), 1, 1);
+  }
+  ctx.globalAlpha=1;
+}
+function drawLines(){
+  if(netGear()) return;                       // 網のときは竿を出さない
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const by0=VH/2+bobPx, HULL_BOT=4;
+  for(const fm of S.crew){
+    if(fm.pose===1) continue;
+    const dir=fm.row===0?1:-1;
+    const eff=navEff();                            // 飛ばすほど竿が上がる
+    if(eff<=0.02) continue;
+    const nrod=Math.min(fm.rod||0, ROD_MAX);       // 元の1本＋追加ぶん。最大3本（両手＋口）
+    for(let k=0;k<=nrod;k++){
+      const x0=Math.round(VW/2+fm.tipx)+(k?((k&1)?-((k+1)>>1):((k+1)>>1)):0);
+      const y0=Math.round(VH/2+fm.tipy)+bobPx-(k?((k+1)>>1):0);
+      const len=Math.max(2,Math.round((fm.lineLen-k)*eff)), sl=fm.lineSlant+k*1.3*(k&1?-1:1);
+      let lx=x0, ly=y0;
+      for(let i=1;i<=len;i++){
+        ly=y0+dir*i; lx=x0+Math.round(sl*i/len);
+        ctx.fillStyle=(ly-by0>HULL_BOT||dir<0)?'rgba(216,232,240,.5)':'rgba(216,232,240,.2)';
+        ctx.fillRect(lx,ly,1,1);
+      }
+      ctx.fillStyle='rgba(240,250,255,.8)';
+      ctx.fillRect(lx,ly,1,1);
+    }
+  }
+  ctx.strokeStyle='rgba(236,247,252,.8)'; ctx.lineWidth=1;
+  for(const p of S.parts){
+    const tx=Math.round(VW/2+p.fm.tipx)+.5, ty=Math.round(VH/2+p.fm.tipy)+bobPx+.5;
+    const px2=Math.round(p.x+ox)+.5, py2=Math.round(p.y+oy)+.5;
+    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(px2,py2); ctx.stroke();
+    const ai=((Math.round(p.a/TAU*ANG)%ANG)+ANG)%ANG;
+    ctx.drawImage(fishAtlas, ai*CELL, 3*CELL, CELL, CELL, (px2-CELL/2)|0, (py2-CELL/2)|0, CELL, CELL);
+  }
+  for(const fl of S.flash){                      // 竿先に収まった瞬間の光
+    const u=fl.t/.16, r=1+u*3.5;
+    const x=Math.round(VW/2+fl.fm.tipx), y=Math.round(VH/2+fl.fm.tipy)+bobPx;
+    ctx.globalAlpha=(1-u)*.9;
+    ctx.fillStyle='#fff6dd';
+    ctx.fillRect(x-r,y,r*2,1); ctx.fillRect(x,y-r,1,r*2);
+  }
+  ctx.globalAlpha=1;
+}
+function drawStick(){
+  const st=S.stick;
+  st.f+=((st.on?1:0)-st.f)*0.22;
+  if(st.f<0.03) return;
+  const ax=Math.round(st.ax), ay=Math.round(st.ay);
+  ctx.globalAlpha=st.f*0.22;                  // 海に埋もれないよう下地を敷く
+  ctx.fillStyle='#041a28';
+  ctx.beginPath(); ctx.arc(ax,ay,STICK_R+2,0,TAU); ctx.fill();
+  ctx.globalAlpha=st.f*0.6; ctx.fillStyle='#cfe3ec';
+  for(let i=0;i<16;i++){                      // 支点の輪
+    const a=i/16*TAU;
+    ctx.fillRect(ax+Math.round(Math.cos(a)*STICK_R)-1, ay+Math.round(Math.sin(a)*STICK_R)-1, 2,2);
+  }
+  const dx=st.tx-st.ax, dy=st.ty-st.ay, m=Math.hypot(dx,dy);
+  if(m>STICK_DEAD){                           // 支点から舵の向きへ点線
+    ctx.globalAlpha=st.f*0.5;
+    for(let i=STICK_DEAD;i<m;i+=3) ctx.fillRect(ax+Math.round(dx/m*i), ay+Math.round(dy/m*i),1,1);
+  }
+  ctx.globalAlpha=st.f;
+  const tx=Math.round(st.tx), ty=Math.round(st.ty);
+  ctx.fillStyle='#7a4f08'; ctx.fillRect(tx-3,ty-3,7,7);
+  ctx.fillStyle='#f2b32c'; ctx.fillRect(tx-2,ty-2,5,5);
+  ctx.fillStyle='#ffe6a8'; ctx.fillRect(tx-1,ty-1,2,2);
+  ctx.globalAlpha=1;
+}
+function drawTrawl(){
+  if(S.gear!=='trawl') return;
+  const B=S.boat, T=S.trawl, ox=VW/2-B.x, oy=VH/2-B.y;
+  const ca=Math.cos(T.hd), sa=Math.sin(T.hd);
+  const hd2=TR.depth*0.5;
+  const P=(lx,ly)=>[T.x+lx*ca-ly*sa+ox, T.y+lx*sa+ly*ca+oy+bobPx];
+  const boosting=navBoost();
+  const N=14;
+  ctx.lineWidth=1;
+
+  // 曳き綱：船から口の両端へ
+  const m0=P(hd2,-trawlHalfW(0)), m1=P(hd2,trawlHalfW(0));
+  ctx.globalAlpha=0.30*(1-0.4*REDUCE); ctx.strokeStyle='#c9b184';
+  ctx.beginPath();
+  ctx.moveTo(Math.round(B.x+ox)+.5, Math.round(B.y+oy+bobPx)+.5);
+  ctx.lineTo(Math.round(m0[0])+.5, Math.round(m0[1])+.5);
+  ctx.moveTo(Math.round(B.x+ox)+.5, Math.round(B.y+oy+bobPx)+.5);
+  ctx.lineTo(Math.round(m1[0])+.5, Math.round(m1[1])+.5);
+  ctx.stroke();
+
+  // 網の輪郭。判定と同じ w(u) を辿るので見た目と当たりが一致する
+  ctx.globalAlpha=(boosting?0.7:0.5)*(1-0.4*REDUCE);
+  ctx.strokeStyle=boosting?'#ffe9b0':'#6fd0c0';
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const u=i/N, q=P(hd2-u*TR.depth, trawlHalfW(u));
+    if(i===0) ctx.moveTo(q[0],q[1]); else ctx.lineTo(q[0],q[1]);
+  }
+  for(let i=N;i>=0;i--){
+    const u=i/N, q=P(hd2-u*TR.depth, -trawlHalfW(u));
+    ctx.lineTo(q[0],q[1]);
+  }
+  ctx.closePath(); ctx.stroke();
+  // 口の丸み（浮子綱）
+  const lip=trawlHalfW(0)*TR.lip;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const v=-1+2*i/N, q=P(hd2+lip*(1-v*v), v*trawlHalfW(0));
+    if(i===0) ctx.moveTo(q[0],q[1]); else ctx.lineTo(q[0],q[1]);
+  }
+  ctx.stroke();
+
+  // 目
+  ctx.globalAlpha=0.22*(1-0.4*REDUCE);
+  ctx.fillStyle=boosting?'#ffe9b0':'#6fd0c0';
+  for(let i=1;i<9;i++){
+    const u=i/9, w=trawlHalfW(u);
+    for(let j=0;j<7;j++){
+      if(((i+j)&1)) continue;
+      const q=P(hd2-u*TR.depth, (-1+2*j/6)*w);
+      ctx.fillRect(Math.round(q[0]),Math.round(q[1]),1,1);
+    }
+  }
+
+  ctx.globalAlpha=1;
+}
+function drawNet(){
+  if(S.gear!=='seine') return;
+  const B=S.boat, N=S.net, ox=VW/2-B.x, oy=VH/2-B.y;
+  const cx=VW/2, cy=VH/2+bobPx, R=netR(), Ry=R*NET.flat;
+  if(!navBoost()){
+    const pulling=N.phase==='pull';
+    const u=pulling ? 1-N.t/NET.pull : 1-Math.min(1,N.t/Math.max(.001,netCycle()));
+    const k=pulling ? Math.max(0.10,1-u*u) : 1;    // 締めると縮む
+    const rr=R*k, ry2=Ry*k;
+    // 船から網へ渡す綱
+    const bl=boats[S.up.hull-1].len*0.34;
+    ctx.globalAlpha=(pulling?0.6:0.22)*(1-0.4*REDUCE);
+    ctx.strokeStyle='#c9b184'; ctx.lineWidth=1;
+    for(let i=0;i<8;i++){
+      const a=i/8*TAU+Math.PI/8, ca=Math.cos(a), sa=Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(Math.round(cx+ca*bl)+.5, Math.round(cy+sa*7)+.5);
+      ctx.lineTo(Math.round(cx+ca*rr)+.5, Math.round(cy+sa*ry2)+.5);
+      ctx.stroke();
+    }
+    // 網の輪。締めているあいだは金色に張る
+    ctx.globalAlpha=(pulling?0.95:0.22+0.45*u)*(1-0.4*REDUCE);
+    ctx.strokeStyle=pulling?'#ffe9b0':'#6fd0c0';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.ellipse(cx,cy,rr,ry2,0,0,TAU); ctx.stroke();
+    // 目。輪に沿って点を打つ
+    ctx.fillStyle=pulling?'#ffe9b0':'#6fd0c0';
+    ctx.globalAlpha=(pulling?0.55:0.20)*(1-0.4*REDUCE);
+    for(let i=0;i<40;i++){
+      const a=i/40*TAU, ca=Math.cos(a), sa=Math.sin(a);
+      const q=0.82+0.06*((i&1)?1:-1);
+      ctx.fillRect(Math.round(cx+ca*rr*q), Math.round(cy+sa*ry2*q), 1, 1);
+    }
+    if(!pulling){                                   // 残り時間を輪の上の点で見せる
+      const a=-Math.PI/2+u*TAU;
+      ctx.globalAlpha=0.9; ctx.fillStyle='#6fd0c0';
+      ctx.fillRect(Math.round(cx+Math.cos(a)*R)-1, Math.round(cy+Math.sin(a)*Ry)-1, 3, 3);
+    }
+    ctx.globalAlpha=1;
+  }
+  if(N.phase==='pull'){                             // 締められて船へ寄る魚
+    const u=1-N.t/NET.pull, e=u*u;
+    for(const h of N.held){
+      const x=h.x0+(B.x-h.x0)*e, y=h.y0+(B.y-h.y0)*e;
+      const ai=((Math.round(h.a/TAU*ANG)%ANG)+ANG)%ANG;
+      ctx.drawImage(fishAtlas, ai*CELL, 3*CELL, CELL, CELL,
+        (Math.round(x+ox)-CELL/2)|0, (Math.round(y+oy)-CELL/2)|0, CELL, CELL);
+    }
+  }
+}
+function drawPops(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  for(const p of S.pops){
+    const u=p.t/.55, k=p.fv?2:1;
+    ctx.globalAlpha=Math.min(1, u<.12 ? u/.12 : (1-u)*(1-u)*1.4);
+    ctx.drawImage(p.fv?popFv:popNorm, 0,0,9,7,
+      Math.round(p.x+ox)-4*k, Math.round(p.y+oy-4-u*15), 9*k, 7*k);
+  }
+  ctx.globalAlpha=1;
+}
+function drawBurst(){
+  const b=S.burst; if(!b) return;
+  const u=b.t/b.dur;
+  if(u>=1){ S.burst=null; return; }
+  const gold=b.kind!=='lv';
+  // 継続は6秒ごとに来るので閃光は弱く。突入とレベルアップだけ強く光らせる
+  const peak = b.kind==='cont' ? .20 : .62;
+  ctx.globalAlpha=(1-u)*(1-u)*(REDUCE?.16:peak);
+  ctx.fillStyle=gold?'#ffe9b0':'#ffffff';
+  ctx.fillRect(0,0,VW,VH);
+  const cx=VW/2, cy=VH/2+bobPx;
+  ctx.globalAlpha=(1-u)*(b.kind==='cont'?.6:.85);
+  ctx.fillStyle=gold?'#f2b32c':'#eaf3f4';
+  const r0=14+u*150, len=30*(1-u);               // 放射線
+  for(let i=0;i<16;i++){
+    const a=i/16*TAU+b.seed, ca=Math.cos(a), sa=Math.sin(a);
+    for(let r=r0;r<r0+len;r+=2) ctx.fillRect(Math.round(cx+ca*r), Math.round(cy+sa*r*.62), 3, 3);
+  }
+  ctx.globalAlpha=(1-u)*.7; ctx.strokeStyle=gold?'#ffe9b0':'#eaf3f4'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.ellipse(cx, cy, 12+u*160, (12+u*160)*.62, 0,0,TAU); ctx.stroke();
+  ctx.globalAlpha=1;
+}
+function draw(){
+  bobPx=Math.round(Math.sin(S.boat.bob)*1.2);
+  let sx=0, sy=0;
+  if(!REDUCE && S.shake>0.01){
+    const m=S.shake*S.shake*3.4;
+    sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
+  }
+  if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
+  drawSea(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
+  drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
+  if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
+  drawBurst(); drawStick();
+}
+
+/* ================= 魚群探知機 ================= */
+/* 魚探の色エコー。反応が強いほど赤へ寄る、実機の配色に倣った段階色 */
+const ECHO=['#17527e','#1b7f8c','#1f9a63','#63b23a','#d4c132','#e0892a','#dc4b24','#e0332c'];
+const RCELL=7;                 // エコー1マスの画素数
+const ECHO_DENS=250;           // 近傍平均の密度から色段階への換算係数。上げるほど赤くなりやすい
+const ECHO_RANGE=68;           // 近傍として見る海の半径(px)。レンジが変わっても一定に保つ
+let echoGrid=null, echoTmp=null, echoBlur=null, echoCols=0;
+function drawEchoes(g,C,R,k,B,sw){
+  const W=rcv.width;
+  if(!echoGrid){
+    echoCols=Math.ceil(W/RCELL);
+    echoGrid=new Float32Array(echoCols*echoCols);
+    echoTmp=new Float32Array(echoCols*echoCols);
+    echoBlur=new Float32Array(echoCols*echoCols);
+  }
+  echoGrid.fill(0);
+  for(const s of S.schools){                  // 魚を間引いて拾い、間引いた分を重みにする
+    const fs=s.fish, step=Math.max(1,Math.round(s.alive/400));
+    for(let i=0;i<fs.length;i+=step){
+      const f=fs[i]; if(!f.alive) continue;
+      const x=C+(f.wx-B.x)*k, y=C+(f.wy-B.y)*k;
+      if(x<0||y<0||x>=W||y>=W) continue;
+      echoGrid[((y/RCELL)|0)*echoCols+((x/RCELL)|0)]+=step;
+    }
+  }
+  const N=echoCols;
+  const kr=Math.max(1,Math.min(7,Math.round(ECHO_RANGE*k/RCELL)));   // 近傍の半径(マス)
+  const EKS=kr+1;
+  for(let y=0;y<N;y++){                       // 横方向
+    const row=y*N;
+    for(let x=0;x<N;x++){
+      let a=0;
+      for(let t=-kr;t<=kr;t++){ const xx=x+t; if(xx<0||xx>=N) continue; a+=echoGrid[row+xx]*(EKS-Math.abs(t)); }
+      echoTmp[row+x]=a/(EKS*EKS);
+    }
+  }
+  for(let y=0;y<N;y++){                       // 縦方向。空きセルが混じるほど平均が下がる
+    for(let x=0;x<N;x++){
+      let a=0;
+      for(let t=-kr;t<=kr;t++){ const yy=y+t; if(yy<0||yy>=N) continue; a+=echoTmp[yy*N+x]*(EKS-Math.abs(t)); }
+      echoBlur[y*N+x]=a/(EKS*EKS);
+    }
+  }
+  const cw=RCELL/k, norm=ECHO_DENS/(cw*cw), R2=R*R, half=RCELL/2;
+  for(let cy=0;cy<N;cy++){
+    const py=cy*RCELL, dy=py+half-C;
+    for(let cx=0;cx<N;cx++){
+      if(echoGrid[cy*N+cx]<=0) continue;      // 魚がいるマスだけ点灯。色は周囲から決める
+      const px2=cx*RCELL, dx=px2+half-C;
+      if(dx*dx+dy*dy>R2) continue;
+      const lv=Math.min(ECHO.length-1, Math.max(0, Math.round(echoBlur[cy*N+cx]*norm)-1));
+      let da=sw-Math.atan2(dy,dx); da=((da%TAU)+TAU)%TAU;
+      g.globalAlpha=.45+.55*(1-da/TAU);       // 掃引の残光
+      g.fillStyle=ECHO[lv];
+      g.fillRect(px2,py,RCELL-1,RCELL-1);
+    }
+  }
+  g.globalAlpha=1;
+}
+const rcv=document.getElementById('radar'), rctx=rcv.getContext('2d');
+function drawRadar(){
+  const g=rctx, W=rcv.width, C=W/2, R=W/2-4, B=S.boat, range=stat.sonar(), k=R/range;
+  g.clearRect(0,0,W,W);
+  g.save();
+  g.beginPath(); g.arc(C,C,R,0,TAU); g.clip();
+  g.fillStyle='#04212e'; g.fillRect(0,0,W,W);
+  g.strokeStyle='rgba(63,191,160,.20)'; g.lineWidth=1;
+  for(let i=1;i<=3;i++){ g.beginPath(); g.arc(C,C,R*i/3,0,TAU); g.stroke(); }
+  g.beginPath(); g.moveTo(C-R,C); g.lineTo(C+R,C); g.moveTo(C,C-R); g.lineTo(C,C+R); g.stroke();
+  const sw=S.t*1.15%TAU;
+  g.save();                                   // 掃引
+  g.translate(C,C); g.rotate(sw);
+  g.fillStyle='rgba(63,191,160,.10)';
+  g.beginPath(); g.moveTo(0,0); g.arc(0,0,R,-0.55,0); g.closePath(); g.fill();
+  g.strokeStyle='rgba(63,191,160,.55)';
+  g.beginPath(); g.moveTo(0,0); g.lineTo(R,0); g.stroke();
+  g.restore();
+  g.strokeStyle='rgba(234,243,244,.22)';      // 画面範囲
+  g.strokeRect(C-VW/2*k, C-VH/2*k, VW*k, VH*k);
+  drawEchoes(g,C,R,k,B,sw);                   // 魚群の反応（実位置をセルに集計）
+  for(const c of S.chests){                   // 宝箱
+    const x=C+(c.x-B.x)*k, y=C+(c.y-B.y)*k;
+    g.fillStyle='#f2b32c';
+    g.save(); g.translate(x,y); g.rotate(Math.PI/4); g.fillRect(-6,-6,12,12); g.restore();
+    g.fillStyle='#3a2a10'; g.font='bold '+Math.round(W/26)+'px monospace'; g.textAlign='center'; g.textBaseline='middle';
+    g.fillText('?',x,y+1);
+  }
+  g.restore();
+  const b=boats[S.up.hull-1];                 // 自船
+  g.fillStyle='#eaf3f4'; g.fillRect(C-b.len*k/2, C-2, Math.max(6,b.len*k), 4);
+  g.fillStyle='#e0332c'; g.fillRect(C+(S.boat.face>0?b.len*k/2-2:-b.len*k/2), C-3, 3, 6);
+  g.strokeStyle='rgba(242,179,44,.5)'; g.lineWidth=2;
+  g.beginPath(); g.arc(C,C,R,0,TAU); g.stroke();
+}
+
+/* ================= HUD ================= */
+const frameEl=document.getElementById('frame');
+const hud=document.getElementById('hud');
+const elTime=document.getElementById('time'), elClock=document.getElementById('clock');
+const elScore=document.getElementById('score'), elFill=document.getElementById('lvfill');
+const elLvNum=document.getElementById('lvnum'), elStats=document.getElementById('stats');
+const toastEl=document.getElementById('toast'), toastItems=document.getElementById('toastitems');
+const chipEls={};
+function buildChips(){
+  UPG_IDS.forEach(id=>{
+    const u=UPG_BY[id];
+    const d=document.createElement('div'); d.className='chip';
+    const c=document.createElement('canvas'); c.width=16;c.height=16;
+    c.getContext('2d').drawImage(ICONS[u.id],0,0);
+    const b=document.createElement('b'); b.dataset.k='up.'+u.id+'.short'; b.textContent=t('up.'+u.id+'.short');
+    const i=document.createElement('i');
+    d.append(c,b,i); elStats.appendChild(d);
+    d.title=t('up.'+u.id+'.name')+'（デバッグ中のみ 左クリック+1 / 右クリック-1 / Shiftで5段）';
+    d.addEventListener('click',e=>{ if(!perf.on) return;
+      e.preventDefault(); e.stopPropagation(); bump(u, e.shiftKey?5:1); });
+    d.addEventListener('contextmenu',e=>{ if(!perf.on) return;
+      e.preventDefault(); e.stopPropagation(); bump(u, e.shiftKey?-5:-1); });
+    chipEls[u.id]={box:d,val:i};
+  });
+}
+function bump(u,n){                     // デバッグ用：強化を直接増減する
+  if(u.id==='crew')       S.up.crew=clamp(S.up.crew+n,0,200);
+  else if(u.id==='hull')  S.up.hull=clamp(S.up.hull+n,1,5);
+  else if(u.id==='sonar') S.up.sonar=clamp(S.up.sonar+n,1,u.max);
+  else                    S.up[u.id]=clamp(S.up[u.id]+n,0,u.max);
+  layoutCrew(); updateHUD();
+}
+let lastTxt={};
+function setTxt(el,v){ if(lastTxt[el.id]!==v){ lastTxt[el.id]=v; el.textContent=v; } }
+const elCatch=document.querySelector('.catch'), elFever=document.getElementById('fever');
+const elFvBadge=document.getElementById('fvbadge'), elFvBar=document.getElementById('fvbar');
+const elFvBig=document.getElementById('fvbig');
+const elFvRound=document.getElementById('fvround');
+function updateHUD(){
+  const rem=Math.max(0,GAME_TIME-S.t);
+  elScore.style.transform = S.pop>0.01 ? 'scale('+(1+0.26*S.pop)+')' : '';
+  const playing=S.mode==='play';
+  // 縁の赤みもバーと同じ時計。こちらは竿の間隔で明滅しないよう頭を落としてある
+  const dry=clamp((FV_FADE-S.fvT)/FV_FADE,0,1);
+  elFever.style.opacity = S.fever ? (1-0.85*dry).toFixed(2) : '0';
+  elFever.classList.toggle('hot', S.fever && playing);
+  elCatch.classList.toggle('hot', S.fever);
+  elFvBadge.classList.toggle('on', S.fever && playing);   // 3択の見出しと重なるので伏せる
+  if(S.fever){
+    const u=clamp(S.fvT/fvSec(),0,1);              // 残り時間そのもの。当たれば満タンへ跳ね返る
+    elFvBar.style.width=(u*100).toFixed(1)+'%';
+    elFvBar.classList.toggle('low', S.fvT<FV_FADE);
+    setTxt(elFvRound, t('hud.round',{n:S.fvRound}));
+    elFvBadge.style.transform='translate(-50%,0) scale('+(1+0.10*S.fvPulse).toFixed(3)+')';
+  }
+  setTxt(elTime, rem>10 ? Math.floor(rem/60)+':'+String(Math.floor(rem%60)).padStart(2,'0') : rem.toFixed(1));
+  elClock.classList.toggle('warn', rem<=15);
+  setTxt(elScore, fmt(S.score));
+  setTxt(elLvNum, S.prog+' / '+S.need);
+  elFill.style.width=clamp(S.prog/S.need*100,0,100)+'%';
+  UPG_IDS.forEach(id=>{
+    const u=UPG_BY[id];
+    const c=chipEls[u.id]; if(!c) return;
+    const lv=u.lv(), on = u.id==='crew' ? true : (u.id==='hull'||u.id==='sonar' ? lv>1 : lv>0);
+    c.box.classList.toggle('has', on);
+    const v=valOf(u.id,S.up);
+    c.val.innerHTML = v.h + (v.u?'<u>'+v.u+'</u>':'');
+  });
+}
+
+/* ================= 3択 ================= */
+const cardsEl=document.getElementById('cards');
+const scrLevel=document.getElementById('levelup');
+function showCards(){
+  cardsEl.innerHTML='';
+  S.choices.forEach((u,idx)=>{
+    const d=document.createElement('div'); d.className='card'; d.tabIndex=0;
+    const nu=nextUp(u.id), v0=valOf(u.id,S.up), v1=valOf(u.id,nu);
+    const no=document.createElement('div'); no.className='no'; no.textContent=idx+1;
+    const c=document.createElement('canvas'); c.width=16;c.height=16;
+    c.getContext('2d').drawImage(ICONS[u.id],0,0);
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=t('up.'+u.id+'.name');
+    const lv=document.createElement('div'); lv.className='lv';
+    lv.textContent = u.id==='crew' ? t('pick.lvCrew') : t('pick.lv',{a:u.lv(),b:u.lv()+1});
+    const val=document.createElement('div'); val.className='val';
+    val.innerHTML='<s>'+v0.h+'</s><em>→</em><b>'+v1.h+'</b>'+(v1.u?'<i>'+v1.u+'</i>':'');
+    d.append(no,c,nm,lv,val);
+    const seats0=stat.seats(S.up), seats1=stat.seats(nu);
+    let ef='';
+    if(u.id==='crew'){
+      const wait=Math.max(0,nu.crew-seats0);
+      ef = wait>0 ? t('pick.efCrew',{a:wait,b:seats0}) : t('pick.efBerth',{b:seats0});
+    }else if(u.id==='hull'){
+      ef=t('pick.efHull',{a:TONS[S.up.hull-1],b:TONS[nu.hull-1]});
+    }else if(u.id==='sonar'){
+      ef=fmtDist(stat.sonar(S.up)*M_PER_PX)+' → '+fmtDist(stat.sonar(nu)*M_PER_PX);
+    }else if(u.id==='lure'){
+      const r0=stat.lureR(S.up)*M_PER_PX;
+      ef=(r0?fmtDist(r0):'なし')+' → '+fmtDist(stat.lureR(nu)*M_PER_PX);
+    }
+    if(ef){ const e=document.createElement('div'); e.className='ef'; e.textContent=ef; d.append(e); }
+    const fl=document.createElement('div'); fl.className='fl';
+    fl.innerHTML=t('up.'+u.id+'.fl'+(netGear()&&u.id==='rate'?'.net':'')); d.append(fl);  // <br> を入れるため
+    d.addEventListener('click',()=>choose(idx));
+    d.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();choose(idx);} });
+    cardsEl.appendChild(d);
+  });
+  scrLevel.classList.add('on');
+  const first=cardsEl.firstChild; if(first) first.focus({preventScroll:true});
+}
+function choose(i){
+  if(S.mode!=='levelup' || !scrLevel.classList.contains('on')) return;
+  applyUpgrade(S.choices[i]);
+  scrLevel.classList.remove('on');
+  S.mode='play';
+  sfxPick();
+  if(S.prog>=S.need) levelUp();                  // 網は1回で数レベル分入ることがある
+}
+window.addEventListener('keydown',e=>{
+  if(S.mode==='levelup' && e.key>='1' && e.key<='3') choose(parseInt(e.key,10)-1);
+});
+
+/* ================= 開始・終了 ================= */
+const scrResult=document.getElementById('result'), promptEl=document.getElementById('prompt');
+function reset(){
+  S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
+  S.schools.length=0; S.chests.length=0; S.crew.length=0;
+  S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
+  S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
+  trawlReset();
+  S.fvT=0; S.fvRound=0; S.fvLock=0; S.fvPulse=0; S.fever=false; S.chain=0; S.inRange=0; S.pop=0; S.shake=0; S.freeze=0; S.burst=null;
+  S.up={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  S.start={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  Object.assign(S.boat,{x:0,y:0,vx:0,vy:0,hd:0,sp:0,face:1,bob:0});
+  S.dir.x=0; S.dir.y=0; S.dir.t=1; S.menu=false;
+  S.stick.id=-1; S.stick.on=false; S.stick.f=0;
+  layoutCrew();
+  S.schools.push(makeSchool(175,rnd(-28,28),130)); S.totalFish+=130;
+}
+function startGame(){          // リザルトからのやり直し
+  audioInit(); reset();
+  scrMenu.classList.remove('on');
+  S.mode='play'; S.started=true;
+  promptEl.classList.add('gone');
+  scrResult.classList.remove('on');
+  hud.classList.add('on');
+  lastSec=GAME_TIME;
+}
+function beginRun(){           // 最初の入力で走り出す
+  if(S.started || S.mode!=='play') return;
+  S.started=true;
+  audioInit();
+  promptEl.classList.add('gone');
+  hud.classList.add('on');
+  lastSec=GAME_TIME;
+}
+const RANKS=[1500,3000,5000,7000,10000,1e9];
+function endGame(){
+  S.mode='result'; S.started=false; hud.classList.remove('on');
+  S.fever=false; S.fvT=0; elFever.style.opacity='0'; elFvBadge.classList.remove('on'); elFvBadge.style.transform=''; elFvBig.classList.remove('go');
+  const nb=S.score>S.best;
+  if(nb){ S.best=S.score; saveBest(S.best); }
+  document.getElementById('rscore').innerHTML=fmt(S.score)+'<span>'+t('res.scoreUnit')+'</span>';
+  const ri=RANKS.findIndex(x=>S.score<x)+1;
+  document.getElementById('rrank').innerHTML=t('rank.'+ri)+'<small>'+t('rank.'+ri+'.fl')+'</small>';
+  document.getElementById('rbestwrap').innerHTML = nb? '<span class="newbest">'+t('res.newbest')+'</span>':'';
+  const p0=stat.power(S.start), p1=stat.power(S.up);
+  document.getElementById('rgrow').innerHTML=
+    t('res.grow',{a:'<s>'+p0.toFixed(1)+'</s>',b:'<b>'+p1.toFixed(1)+'</b>'})+' <em>'+t('res.growX',{c:(p1/p0).toFixed(1)})+'</em>';
+  document.getElementById('rstats').innerHTML=
+    UPG_IDS.map(id=>{
+      const u=UPG_BY[id];
+      const a=valOf(u.id,S.start), b=valOf(u.id,S.up);
+      return '<div>'+t('up.'+u.id+'.short')+'<b class="num">'+b.h+'<span>'+b.u+'</span></b><em>'+t('res.from',{v:a.n+a.u})+'</em></div>';
+    }).join('');
+  document.getElementById('rbest').textContent=t('res.best',{n:fmt(S.best)});
+  scrResult.classList.add('on');
+  sfxEnd();
+}
+
+/* ================= 入力 ================= */
+const STICK_R=26, STICK_DEAD=5;
+function onField(e){ return e.target===cv || e.target===frameEl; }
+function toLocal(e){
+  const r=frameEl.getBoundingClientRect();
+  return {x:(e.clientX-r.left)/r.width*VW, y:(e.clientY-r.top)/r.height*VH};
+}
+function aimMouse(e){                      // PC：画面中央から見た向き。遠いほど速い
+  if(!onField(e)) return;
+  beginRun();
+  const r=frameEl.getBoundingClientRect();
+  const dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+  const m=Math.hypot(dx,dy);
+  if(m<=r.width*NAV_DEAD){ S.dir.x=0; S.dir.y=0; S.dir.t=0; return; }
+  // その向きで画面の縁までどれだけあるか。縁に着けた時にちょうど目一杯になる
+  const edge=Math.min(r.width/2*m/Math.max(1e-6,Math.abs(dx)),
+                      r.height/2*m/Math.max(1e-6,Math.abs(dy)));
+  S.dir.t=navThrottle(Math.min(1, m/edge));
+  S.dir.x=dx/m; S.dir.y=dy/m;
+}
+frameEl.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse'){ aimMouse(e); return; }
+  if(!onField(e) || S.stick.id!==-1) return;   // 重なった2本目の指は無視
+  e.preventDefault();
+  const p=toLocal(e), st=S.stick;
+  st.id=e.pointerId; st.on=true;
+  st.ax=p.x; st.ay=p.y; st.tx=p.x; st.ty=p.y;
+  beginRun();
+});
+frameEl.addEventListener('pointermove',e=>{
+  if(e.pointerType==='mouse'){ aimMouse(e); return; }
+  const st=S.stick;
+  if(e.pointerId!==st.id) return;
+  e.preventDefault();
+  const p=toLocal(e);
+  let dx=p.x-st.ax, dy=p.y-st.ay, m=Math.hypot(dx,dy);
+  if(m>STICK_R){                              // 引っ張りすぎたら支点を連れていく
+    const k=1-STICK_R/m;
+    st.ax+=dx*k; st.ay+=dy*k;
+    dx*=STICK_R/m; dy*=STICK_R/m; m=STICK_R;
+  }
+  st.tx=st.ax+dx; st.ty=st.ay+dy;
+  if(m>STICK_DEAD){ S.dir.x=dx/m; S.dir.y=dy/m; }   // 内側では舵を変えない
+  S.dir.t = m<=STICK_DEAD ? 0 : navThrottle(Math.min(1, m/STICK_R));   // 目一杯倒すと加速
+});
+function endStick(e){
+  if(e.pointerId===S.stick.id){ S.stick.id=-1; S.stick.on=false; }  // 離しても進路は維持
+}
+frameEl.addEventListener('pointerdown',()=>audioInit());
+frameEl.addEventListener('pointerup',endStick);
+frameEl.addEventListener('pointercancel',endStick);
+document.getElementById('retry').addEventListener('click',startGame);
+
+/* ================= 音 ================= */
+let AC=null,MG=null,muted=false,lastCatchS=0,noiseBuf=null,lastSec=GAME_TIME;
+function audioInit(){
+  if(AC){ if(AC.state==='suspended') AC.resume(); return; }
+  try{
+    AC=new (window.AudioContext||window.webkitAudioContext)();
+    MG=AC.createGain(); MG.gain.value=.32; MG.connect(AC.destination);
+    noiseBuf=AC.createBuffer(1,AC.sampleRate*.2,AC.sampleRate);
+    const d=noiseBuf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+  }catch(err){ AC=null; }
+}
+function tone(f,dur,type,gain,slide,delay){
+  if(!AC||muted) return;
+  const t=AC.currentTime+(delay||0);
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type||'triangle'; o.frequency.setValueAtTime(f,t);
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,f*slide),t+dur);
+  g.gain.setValueAtTime(.0001,t);
+  g.gain.exponentialRampToValueAtTime(gain,t+.01);
+  g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.connect(g); g.connect(MG); o.start(t); o.stop(t+dur+.03);
+}
+function splash(gain){
+  if(!AC||muted||!noiseBuf) return;
+  const s=AC.createBufferSource(); s.buffer=noiseBuf;
+  const bp=AC.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=rnd(1600,3200); bp.Q.value=1.1;
+  const g=AC.createGain(); g.gain.value=gain;
+  s.connect(bp); bp.connect(g); g.connect(MG); s.start();
+}
+function sfxCatch(){
+  if(!AC||muted) return;
+  const now=AC.currentTime;
+  if(now-lastCatchS<.026) return;
+  lastCatchS=now;
+  const up=1+0.95*Math.min(1,S.chain/40);        // 連が伸びるほど高く
+  tone(rnd(640,1020)*up,.07,'triangle',.055,1.7);
+  if(Math.random()<.5) splash(.03);
+}
+function sfxSure(){                                // 期間中にもう一度当てた合図
+  [523,784,1046,1568].forEach((f,i)=>tone(f,.26,'square',.08,1.3,i*.055));
+  tone(131,.5,'sawtooth',.10,.65);
+}
+function sfxFever(){
+  tone(98,.55,'sawtooth',.13,.62);                // 腹に来る低音を1発
+  tone(147,.4,'sine',.10,.7,.02);
+  [523,659,784,1046,1318].forEach((f,i)=>tone(f,.22,'square',.07,1.25,.06+i*.05));
+}
+function sfxLevel(){ [523,659,784].forEach((f,i)=>tone(f,.22,'triangle',.09,1,i*.07)); }
+function sfxPick(){ tone(880,.12,'square',.05,1.2); }
+function sfxNet(){ tone(180,.20,'sawtooth',.09,.7); tone(430,.14,'square',.05,1.25,.04); }
+function sfxChest(){ [392,523,659,784,1046].forEach((f,i)=>tone(f,.26,'triangle',.08,1,i*.06)); }
+function sfxEnd(){ tone(196,1.4,'sawtooth',.10,.7); tone(147,1.6,'sine',.08,.75,.05); }
+function tickCountdown(){
+  const rem=Math.ceil(GAME_TIME-S.t);
+  if(rem<lastSec){ lastSec=rem; if(rem<=5&&rem>0) tone(1046,.09,'square',.06); }
+}
+/* ================= メニュー ================= */
+const scrMenu=document.getElementById('menu'), muteBtn=document.getElementById('mute');
+const mSoundV=document.getElementById('mSoundV');
+function paintSound(){
+  mSoundV.textContent=t(muted?'menu.off':'menu.on');
+  document.getElementById('mSound').classList.toggle('off', muted);
+}
+function openMenu(v){
+  if(S.mode!=='play') return;
+  S.menu=v;
+  scrMenu.classList.toggle('on', v);
+  if(v){ paintSound(); paintGear(); document.getElementById('mSound').focus({preventScroll:true}); }
+}
+muteBtn.addEventListener('click',e=>{ e.stopPropagation(); audioInit(); openMenu(!S.menu); });
+const elHaul=document.getElementById('haul');
+const mGearV=document.getElementById('mGearV');
+function paintGear(){ mGearV.textContent=t('gear.'+S.gear); }
+const GEARS=['pole','seine','trawl'];
+document.getElementById('mGear').addEventListener('click',()=>{   // 切り替えたら仕切り直し
+  S.gear = GEARS[(GEARS.indexOf(S.gear)+1)%GEARS.length];
+  saveGear(S.gear); paintGear(); openMenu(false); startGame();
+});
+document.getElementById('mSound').addEventListener('click',()=>{ muted=!muted; paintSound(); });
+document.getElementById('mRetry').addEventListener('click',()=>{ openMenu(false); startGame(); });
+document.getElementById('mClose').addEventListener('click',()=>openMenu(false));
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  e.preventDefault();
+  if(S.mode==='play') openMenu(!S.menu);
+});
+
+/* ================= 負荷計測（Fキーで開閉） ================= */
+const elPerf=document.getElementById('perf');
+const dbgFever=document.getElementById('dbgFever');
+dbgFever.addEventListener('click',e=>{             // 左：発動／継続を1段  右：終了
+  e.preventDefault(); e.stopPropagation();
+  if(!S.fever) feverOn();
+  else feverHit();
+});
+dbgFever.addEventListener('contextmenu',e=>{
+  e.preventDefault(); e.stopPropagation();
+  S.fever=false; S.fvT=0; S.fvLock=0; elFvBadge.style.transform='';
+});
+const perf={on:false, acc:0, n:0, upd:0, drw:0, worst:0};
+function perfToggle(v){
+  perf.on = v===undefined ? !perf.on : v;
+  elPerf.hidden=!perf.on;
+  dbgFever.hidden=!perf.on;
+  elStats.classList.toggle('dbg', perf.on);
+  perf.acc=perf.n=perf.upd=perf.drw=perf.worst=0;
+  try{ localStorage.setItem('ippon.perf', perf.on?'1':'0'); }catch(e){}
+}
+function perfTick(raw,u,d){
+  perf.acc+=raw; perf.n++; perf.upd+=u; perf.drw+=d;
+  const ft=u+d; if(ft>perf.worst) perf.worst=ft;
+  if(perf.acc<0.25) return;
+  const fps=perf.n/perf.acc, ms=perf.acc/perf.n*1000;
+  const up=perf.upd/perf.n, dr=perf.drw/perf.n;
+  const hot=v=>v>=8?' class="hot"':'';
+  elPerf.innerHTML=
+    '<b'+(fps<50?' class="hot"':'')+'>'+fps.toFixed(1)+'</b> fps <u>'+ms.toFixed(1)+'ms</u>\n'+
+    '更新 <i>'+up.toFixed(2)+'</i>  描画 <i'+hot(dr)+'>'+dr.toFixed(2)+'</i>  最悪 <i'+hot(perf.worst)+'>'+perf.worst.toFixed(1)+'</i> ms\n'+
+    '魚 <b>'+fmt(S.totalFish)+'</b> 画面 <b>'+fmt(fishDrawn)+'</b>  群 <b>'+S.schools.length+'</b>\n'+
+    '漁師 <b>'+S.crew.length+'</b>  竿 <b>'+S.parts.length+'</b>  飛沫 <b>'+(S.spray.length+S.wake.length+S.rings.length)+'</b>\n'+
+    '<u>チップ 左+1 右-1 Shiftで5段</u>';
+  perf.acc=perf.n=perf.upd=perf.drw=perf.worst=0;
+}
+window.addEventListener('keydown',e=>{
+  if((e.key==='f'||e.key==='F') && !e.metaKey && !e.ctrlKey && !e.altKey) perfToggle();
+});
+
+/* ================= ループ ================= */
+let last=performance.now();
+function tick(now){
+  const raw=(now-last)/1000; last=now;
+  const dt=raw>.05?.05:raw;
+  const p0=performance.now();
+  S.rt+=dt;
+  S.pop=Math.max(0,S.pop-dt*4.2);
+  S.fvPulse=Math.max(0,S.fvPulse-dt*5);
+  S.shake=Math.max(0,S.shake-dt*3.4);
+  if(S.burst) S.burst.t+=dt;
+  if(S.freeze>0) S.freeze-=dt;                   // 止まっている間も閃光だけは進む
+  else if(S.mode==='play' && !S.menu){
+    if(S.started) S.t+=dt;
+    updateBoat(dt); manageWorld(dt); updateSchools(dt);
+    if(S.started){ updateFishing(dt); updateFever(dt); }
+    updateParts(dt);
+    if(S.started){ tickCountdown(); if(S.t>=GAME_TIME) endGame(); }
+  }
+  const p1=performance.now();
+  draw(); drawRadar(); updateHUD();
+  if(perf.on) perfTick(raw, p1-p0, performance.now()-p1);
+  requestAnimationFrame(tick);
+}
+
+/* ================= 言語の適用 ================= */
+function applyLang(){
+  document.title = LANG==='en' ? 'Fish On! ~Pole & Line' : 'カツオ一本釣り';
+  const set=(id,k)=>{ const e=document.getElementById(id); if(e) e.textContent=t(k); };
+  set('h1a','title.h1a'); set('h1b','title.h1b'); set('h1sub','title.sub');
+  set('tapHint','title.tap'); set('retry','res.retry');
+  set('lblTime','hud.time'); set('lblCatch','hud.catch'); set('lblCatchUnit','hud.catchUnit');
+  set('lvlabel','hud.next');
+  set('fvlabel','hud.fever'); set('fvbig','hud.fever');
+  elFvRound.textContent=t('hud.round',{n:Math.max(1,S.fvRound)});
+  set('lblPickEyebrow','pick.eyebrow'); set('lblPickHead','pick.head'); set('lblResHead','res.head');
+  set('lblMenu','menu.head'); set('mRetry','menu.retry'); set('mClose','menu.close');
+  document.getElementById('mSound').firstChild.nodeValue=t('menu.sound');
+  document.getElementById('mGear').firstChild.nodeValue=t('menu.gear');
+  paintSound(); paintGear();
+  document.querySelectorAll('#stats .chip b[data-k]').forEach(b=>{ b.textContent=t(b.dataset.k); });
+  document.getElementById('titlebest').textContent = S.best ? t('title.best',{n:fmt(S.best)}) : '';
+  lastTxt={};
+  updateHUD();
+  if(S.mode==='levelup') showCards();
+}
+window.setGameLang=c=>{ setLang(c); applyLang(); };   // Playables では getLanguage の結果を渡す
+window.addEventListener('keydown',e=>{                 // 検証用：デバッグ表示中に L で切り替え
+  if(perf.on && (e.key==='l'||e.key==='L')) window.setGameLang(LANG==='ja'?'en':'ja');
+});
+
+/* ================= 起動 ================= */
+initAssets(); initPatterns(); buildChips();
+try{ const q=new URLSearchParams(location.search).get('lang'); if(q) setLang(q); }catch(e){}
+S.best=loadBest(); S.gear=loadGear();
+try{ if(localStorage.getItem('ippon.perf')==='1') perfToggle(true); }catch(e){}
+applyLang();
+reset(); S.mode='play'; S.started=false;
+requestAnimationFrame(tick);
+</script>

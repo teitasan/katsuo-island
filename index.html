@@ -861,8 +861,8 @@ const S={
   stick:{id:-1, on:false, ax:0, ay:0, tx:0, ty:0, f:0},
   dir:{x:0,y:0,t:1}, aim:{x:0,y:0}, menu:false,
   schools:[], chests:[], crew:[], parts:[], wake:[], rings:[], spray:[], flash:[], boil:[], boilAcc:0,
-  up:{crew:8,hull:1,rate:0,engine:0,sonar:1,lure:1},
-  seatX:[], seats:0, acc:1, chestT:26, sprayAcc:0, start:{crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1}, totalFish:0, choices:[], caught:0,
+  up:{crew:2,hull:1,rate:0,engine:0,sonar:1,lure:1},
+  seatX:[], seats:0, acc:1, chestT:26, sprayAcc:0, start:{crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1}, totalFish:0, choices:[], caught:0,
   rt:0, shake:0, freeze:0, pop:0, pops:[], burst:null, inRange:0,
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
@@ -2164,8 +2164,8 @@ function reset(){
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
   trawlReset();
   S.fvT=0; S.fvRound=0; S.fvLock=0; S.fvPulse=0; S.fever=false; S.chain=0; S.inRange=0; S.pop=0; S.shake=0; S.freeze=0; S.burst=null;
-  S.up={crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
-  S.start={crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  S.up={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  S.start={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
   Object.assign(S.boat,{x:0,y:0,vx:0,vy:0,hd:0,sp:0,face:1,bob:0});
   S.dir.x=0; S.dir.y=0; S.dir.t=1; S.menu=false;
   S.stick.id=-1; S.stick.on=false; S.stick.f=0;

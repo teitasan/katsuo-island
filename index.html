@@ -71,6 +71,12 @@
     padding:.35em .8em .4em; border-radius:2px}
   .clock .k{font-size:.72em; letter-spacing:.22em; color:var(--dim)}
   .clock .v{font-size:1.7em; font-weight:700; letter-spacing:.02em}
+  .clock .fuel{display:inline-block; width:5.4em; height:.6em; border:1px solid var(--line2);
+    background:rgba(3,18,29,.9); border-radius:1px; overflow:hidden; vertical-align:middle}
+  .clock .fuel i{display:block; height:100%; width:100%;
+    background:linear-gradient(90deg,var(--kelp),var(--gold)); transition:width .2s linear}
+  .clock.warn .fuel i{background:linear-gradient(90deg,#ff8b6a,#e0332c)}
+  .catch.full{background:linear-gradient(180deg,#8d8779,#5a564c)}
   .clock.warn .v{color:#ff8b6a}
   .clock.warn{border-left-color:#ff8b6a}
 
@@ -255,6 +261,47 @@
   .newbest{display:inline-block; margin-top:.7em; padding:.2em .9em; font-size:.72em; letter-spacing:.28em;
     color:#fff; background:var(--hata)}
 
+  /* ---- 港。海の絵をそのまま背景として使う（別画面へは飛ばさない） ---- */
+  .port{position:absolute; inset:0; pointer-events:none; z-index:4}
+  .port[hidden]{display:none}
+  .port>*{pointer-events:auto}
+  .pmoney{position:absolute; left:1em; top:1em; display:flex; align-items:baseline; gap:.5em;
+    padding:.35em .9em .4em; background:linear-gradient(180deg,rgba(10,31,46,.94),rgba(6,22,34,.94));
+    border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:2px}
+  .pmoney span{font-size:.68em; letter-spacing:.22em; color:var(--dim)}
+  .pmoney b{font-size:1.5em; color:var(--gold); font-weight:700}
+  .plog{position:absolute; left:1em; top:3.9em; font-size:.74em; line-height:1.7; color:var(--mist);
+    font-family:"M PLUS 1 Code",ui-monospace,monospace; white-space:pre; text-shadow:0 1px 2px #000}
+  .plog b{color:var(--foam)} .plog em{font-style:normal; color:var(--gold)}
+  .plog u{text-decoration:none; color:#ff8b6a}
+  .psigns{position:absolute; right:1em; top:1em; display:flex; flex-direction:column; gap:.5em; align-items:flex-end}
+  .psign{padding:.5em 1.1em; font-size:.92em; letter-spacing:.14em; color:#ffe9bd;
+    background:linear-gradient(180deg,#432e1b,#2c1d10); border:1px solid #6b4a26;
+    border-top:3px solid var(--gold); border-radius:2px; box-shadow:0 10px 22px -12px #000;
+    transition:transform .1s ease, border-color .1s ease}
+  .psign:hover{transform:translateY(-2px); border-color:var(--gold)}
+  .psign.on{border-color:var(--gold); background:linear-gradient(180deg,#5c4025,#3a2716)}
+  .pshop{position:absolute; right:1em; top:9.4em; width:19em; max-height:64%; overflow:auto;
+    padding:.5em; background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96));
+    border:1px solid var(--line); border-radius:2px; box-shadow:0 18px 34px -18px #000}
+  .pshop[hidden]{display:none}
+  .prow{display:flex; align-items:center; gap:.55em; width:100%; padding:.45em .5em;
+    background:rgba(255,255,255,.03); border:1px solid transparent; border-radius:2px; text-align:left}
+  .prow+.prow{margin-top:.3em}
+  .prow canvas{width:1.7em; height:1.7em; image-rendering:pixelated; flex:0 0 auto}
+  .prow .nm{flex:1 1 auto; font-size:.84em; color:var(--foam); line-height:1.35}
+  .prow .nm em{display:block; font-style:normal; font-size:.82em; color:var(--dim)}
+  .prow .pr{font-size:.86em; font-weight:700; color:var(--gold);
+    font-family:"M PLUS 1 Code",ui-monospace,monospace}
+  .prow:hover:not(:disabled){border-color:var(--gold); background:rgba(242,179,44,.1)}
+  .prow:disabled{opacity:.4}
+  .prow:disabled .pr{color:var(--dim)}
+  .pgo{position:absolute; left:50%; bottom:1.2em; transform:translateX(-50%);
+    padding:.6em 2.8em; font-size:1.1em; letter-spacing:.34em; color:#2a0b09;
+    background:linear-gradient(180deg,#ffc44a,#e09b12); border-radius:2px;
+    box-shadow:0 10px 26px -12px rgba(242,179,44,.9)}
+  .pgo:hover{transform:translateX(-50%) translateY(-2px)}
+
   /* 位置指定は外側で行う。#perf 自身に font-size を持たせると em の基準が変わってしまう */
   #perfwrap{position:absolute; left:1em; top:6.9em; pointer-events:none}
   #perf{padding:.45em .6em; background:rgba(4,20,32,.82); border:1px solid var(--line);
@@ -296,11 +343,13 @@
     <div id="hud">
       <div class="topbar">
         <div class="clock" id="clock">
-          <span class="k" id="lblTime">ノコリ</span><span class="v num" id="time">3:00</span>
+          <span class="k" id="lblTime">ネンリョウ</span>
+          <span class="fuel"><i id="fuelfill"></i></span>
+          <span class="v num" id="time">100%</span>
         </div>
         <div class="catch">
-          <span class="k" id="lblCatch">ギョカク</span>
-          <span class="v disp num" id="score">0</span><span class="u" id="lblCatchUnit">本</span>
+          <span class="k" id="lblCatch">ツミニ</span>
+          <span class="v disp num" id="score">0</span><span class="u" id="lblCatchUnit">/ 200</span>
         </div>
       </div>
 
@@ -346,13 +395,23 @@
       </div>
     </div>
 
+    <div class="port" id="port" hidden>
+      <div class="pmoney"><span>所持金</span><b class="num" id="pmoney">¥0</b></div>
+      <div class="plog" id="plog"></div>
+      <div class="psigns">
+        <button class="psign" data-shop="crew">船員募集</button>
+        <button class="psign" data-shop="gear">装備・強化</button>
+        <button class="psign" data-shop="ship">造船所</button>
+      </div>
+      <div class="pshop" id="pshop" hidden></div>
+      <button class="pgo disp" id="pgo">出港</button>
+    </div>
+
     <div class="scrim" id="menu">
       <div class="box">
         <div class="mhd" id="lblMenu">キュウケイ</div>
         <div class="mrow">
-          <button class="mbtn" id="mGear">漁法<b id="mGearV">一本釣り</b></button>
           <button class="mbtn" id="mSound">音<b id="mSoundV">ON</b></button>
-          <button class="mbtn" id="mRetry">やり直す</button>
           <button class="mbtn" id="mClose">閉じる</button>
         </div>
         <div class="mnote" id="lblMenuNote">Esc</div>
@@ -384,14 +443,14 @@
 
 const VW = 480, VH = 270;                 // 内部解像度（ピクセルアート基準）
 const M_PER_PX = 2;                       // 魚探の距離表示用（1px = 2m）
-const GAME_TIME = 180;
+const GAME_TIME = 180;   // 使っていない。制限時間は廃止し、燃料が航海の限界になった
 
 /* ================= 文言 ================= */
 const STR={
 ja:{
  'title.h1a':'カツオ','title.h1b':'島','title.sub':'',
  'title.tap':'動かして出港','title.best':'自己ベスト {n}本',
- 'hud.time':'ノコリ','hud.catch':'ギョカク','hud.catchUnit':'本','hud.next':'NEXT',
+ 'hud.time':'ネンリョウ','hud.catch':'ツミニ','hud.catchUnit':'','hud.next':'NEXT',
  'hud.fever':'入れ食い','hud.round':'{n}連',
  'pick.eyebrow':'タイリョウ','pick.head':'どれを積む？',
  'up.crew.name':'漁師','up.crew.short':'漁師','up.crew.fl':'漁師が3人増える<br>釣り座が空くまで待機',
@@ -399,6 +458,7 @@ ja:{
  'up.rate.name':'釣具','up.rate.short':'釣具','up.rate.fl':'釣りの効率が上がる','up.rate.fl.net':'網の目が細かくなる<br>取りこぼしが減る',
  'up.engine.name':'機関','up.engine.short':'機関','up.engine.fl':'船の移動速度が上がる',
  'up.sonar.name':'魚群探知機','up.sonar.short':'魚探','up.sonar.fl':'ミニマップに<br>映る範囲が広がる',
+ 'up.tank.name':'燃料タンク','up.tank.short':'燃料','up.tank.fl':'最大燃料が増える<br>遠くまで行って帰れる',
  'up.lure.name':'集魚装置','up.lure.short':'集魚','up.lure.fl':'魚群が船に寄ってくる<br>入れ食いの時間が長くなる',
  'pick.lvCrew':'漁師 +3人','pick.lv':'Lv{a} → Lv{b}',
  'pick.efCrew':'うち待機 {a}人　釣り座 {b}人','pick.efBerth':'釣り座 {b}人',
@@ -421,7 +481,7 @@ ja:{
 en:{
  'title.h1a':'KATSUO','title.h1b':'ISLE','title.sub':'',
  'title.tap':'Move to cast off','title.best':'BEST {n}',
- 'hud.time':'TIME','hud.catch':'CATCH','hud.catchUnit':'','hud.next':'NEXT',
+ 'hud.time':'FUEL','hud.catch':'HOLD','hud.catchUnit':'','hud.next':'NEXT',
  'hud.fever':'ON FIRE','hud.round':'CHAIN {n}',
  'pick.eyebrow':'BIG CATCH','pick.head':'What comes aboard?',
  'up.crew.name':'Crew','up.crew.short':'Crew','up.crew.fl':'Three more hands<br>They stand by if no berth is free',
@@ -429,6 +489,7 @@ en:{
  'up.rate.name':'Tackle','up.rate.short':'Tackle','up.rate.fl':'Fishing gets more efficient','up.rate.fl.net':'A finer mesh<br>Fewer fish slip through',
  'up.engine.name':'Engine','up.engine.short':'Engine','up.engine.fl':'The boat moves faster',
  'up.sonar.name':'Sonar','up.sonar.short':'Sonar','up.sonar.fl':'A wider scope on the minimap',
+ 'up.tank.name':'Fuel Tank','up.tank.short':'Fuel','up.tank.fl':'More fuel<br>Go further and still get home',
  'up.lure.name':'Chum Rig','up.lure.short':'Chum','up.lure.fl':'Schools come to the boat<br>Runs on fire last longer',
  'pick.lvCrew':'+3 crew','pick.lv':'Lv{a} → Lv{b}',
  'pick.efCrew':'{a} standing by · {b} berths','pick.efBerth':'{b} berths',
@@ -778,6 +839,75 @@ function buildGull(){
   }
 }
 
+/* ---------------- 港 ---------------- */
+/* 世界の原点に置く陸と桟橋。船は東（+x）側から入ってくるので、陸は西側に寄せる */
+let portCv=null;
+const PORT_W=260, PORT_H=200;
+function buildPort(){
+  const c=mkc(PORT_W,PORT_H), g=gx(c);
+  const gw=150, ty=26, by=PORT_H-26;                     // 陸の張り出しと、上下の汀線
+  /* 陸は海に浮いた灰色の板に見えやすい。土 → 草 → 磯 → 波打ち際、と
+     内側から外へ層を重ねて、水との境目を作る */
+  px(g,0,ty,gw,by-ty,'#6d6250');                          // 土
+  for(let i=0;i<220;i++){ const x=rint(0,gw-2), y=rint(ty+2,by-2);
+    px(g,x,y,rint(1,3),1, Math.random()<.5?'#786c58':'#625746'); }
+  px(g,0,ty+6,gw-26,by-ty-12,'#4a6b3a');                  // 草地
+  for(let i=0;i<150;i++){ const x=rint(0,gw-28), y=rint(ty+7,by-8);
+    px(g,x,y,rint(1,3),1, Math.random()<.5?'#568049':'#3f5c33'); }
+  // 磯（岩肌）。上下の縁を不揃いにして直線を殺す
+  for(let x=0;x<gw;x++){
+    const t2=ty-1-((Math.sin(x*0.31)+Math.sin(x*0.13))*1.6|0);
+    const b2=by+1+((Math.sin(x*0.27+2)+Math.sin(x*0.11))*1.6|0);
+    px(g,x,t2,1,ty-t2+2,'#5a5344'); px(g,x,b2-2,1,b2-by+2,'#5a5344');
+    px(g,x,t2,1,1,'#7b7361'); px(g,x,b2,1,1,'#3c372c');
+    if(Math.random()<.3){ px(g,x,t2-1,1,1,'#eaf3f4'); }   // 砕けた波
+    if(Math.random()<.3){ px(g,x,b2+1,1,1,'#eaf3f4'); }
+  }
+  // 岸壁（桟橋の付け根まわりだけコンクリート）
+  const qy=PORT_H/2-30, qh=60;
+  px(g,gw-30,qy,30,qh,'#6f6a5e');
+  px(g,gw-30,qy,30,2,'#8d8779');
+  px(g,gw-30,qy+qh-2,30,2,'#4c4840');
+  px(g,gw-3,qy,3,qh,'#3c3932');
+  for(let y=qy+8;y<qy+qh-8;y+=18){ px(g,gw-8,y,5,6,'#2f2c26'); px(g,gw-7,y,3,1,'#57534a'); }
+  // 浜へ下りる道
+  px(g,40,PORT_H/2-4,gw-70,8,'#8a7c62');
+  px(g,40,PORT_H/2-4,gw-70,1,'#9d8e72');
+  // 倉庫（波板）
+  const wh=[[16,48,48,34,'#9c4a33','#7a3726'],[76,118,54,38,'#3f6d86','#2d5266']];
+  for(const [bx,by,bw,bh,col,col2] of wh){
+    px(g,bx,by,bw,bh,col);
+    px(g,bx,by,bw,3,col2);
+    px(g,bx,by+bh-3,bw,3,col2);
+    for(let x=bx+2;x<bx+bw-1;x+=4) px(g,x,by+3,1,bh-6,col2);
+    px(g,bx+bw/2-5,by+bh-14,10,14,'#2a2620');            // 扉
+    px(g,bx-2,by-3,bw+4,3,'#d6d0c2');                    // 庇
+  }
+  // 灯台
+  const lx=20, ly=100;
+  px(g,lx,ly,12,58,'#e6e2d6');
+  for(let i=0;i<3;i++) px(g,lx,ly+6+i*12,12,4,'#c8352c');
+  px(g,lx-2,ly-7,16,7,'#3a3730');
+  px(g,lx+1,ly-6,10,5,'#f2e08a');
+  px(g,lx-1,ly-10,14,3,'#4a4740');
+  // 桟橋（東へ伸ばす）
+  const py0=PORT_H/2-9;
+  px(g,gw,py0,84,18,'#6b4a28');
+  px(g,gw,py0,84,2,'#8a6336');
+  px(g,gw,py0+16,84,2,'#4a3119');
+  for(let x=gw+6;x<gw+82;x+=9){ px(g,x,py0+18,3,16,'#4a3119'); px(g,x,py0+18,1,16,'#5c3d20'); }
+  // 桟橋の上の小屋と旗
+  px(g,gw+12,py0-15,20,15,'#d9d3c4'); px(g,gw+12,py0-15,20,3,'#9c4a33');
+  px(g,gw+18,py0-8,8,8,'#2a2620');
+  px(g,gw+70,py0-22,1,22,'#8a6a3f');
+  px(g,gw+71,py0-22,7,4,'#e0332c'); px(g,gw+71,py0-18,6,3,'#f2b32c');
+  // 係留してあるはしけ
+  px(g,gw+30,py0+20,26,7,'#3a5f7a'); px(g,gw+30,py0+20,26,2,'#5d8aa8');
+  portCv=c;
+}
+/* 港の絵の中で船着場がどこかを、世界座標のオフセットで返す */
+const PORT_ANCHOR={x:PORT_W-46, y:PORT_H/2};
+
 /* ---------------- 宝箱 ---------------- */
 let chestCv=null;
 function buildChest(){
@@ -814,6 +944,11 @@ function buildIcon(id){
     g.strokeStyle=S; g.lineWidth=1; g.beginPath(); g.arc(8,8,6.5,0,TAU); g.stroke();
     g.globalAlpha=.5; g.beginPath(); g.arc(8,8,3.5,0,TAU); g.stroke(); g.globalAlpha=1;
     line(g,8,8,13,4,S); px(g,10,10,2,2,R); px(g,5,5,1,1,S);
+  }else if(id==='tank'){
+    px(g,3,2,10,12,'#c8562a'); px(g,3,2,10,1,'#e2703c'); px(g,3,13,10,1,'#8f3a18');
+    px(g,3,5,10,1,'#8f3a18'); px(g,3,10,10,1,'#8f3a18');
+    px(g,6,0,4,2,'#8a99a3'); px(g,7,0,2,1,'#cfd9de');
+    px(g,5,7,6,2,'#f2e6c8'); px(g,6,7,1,2,'#c8562a'); px(g,9,7,1,2,'#c8562a');
   }else if(id==='lure'){
     g.strokeStyle=G; g.lineWidth=1;
     g.beginPath(); g.arc(8,8,2.5,0,TAU); g.stroke();
@@ -842,13 +977,15 @@ function buildSea(){
 }
 
 /* ---------------- 強化定義 ---------------- */
+/* 港で買えるもの。船体は造船所（SHIPS）へ移したのでここには無い。
+   apply は1段ぶん。値段は costOf(id) を見る */
 const UPG=[
-  {id:'crew', max:99, lv:()=>S.up.crew, apply:()=>{S.up.crew+=3;}},
-  {id:'hull', max:5, lv:()=>S.up.hull, apply:()=>{S.up.hull=Math.min(5,S.up.hull+1);}},
+  {id:'crew', max:99, lv:()=>S.up.crew, apply:()=>{S.up.crew+=1;}},
   {id:'rate', max:10, lv:()=>S.up.rate, apply:()=>{S.up.rods=(S.up.rods||0)+rodGrant(); S.up.rate++;}},
   {id:'engine', max:10, lv:()=>S.up.engine, apply:()=>{S.up.engine++;}},
-  {id:'sonar', max:6, lv:()=>S.up.sonar, apply:()=>{S.up.sonar++; dropChest();}},
-  {id:'lure', max:8, lv:()=>S.up.lure, apply:()=>{S.up.lure++;}}
+  {id:'sonar', max:6, lv:()=>S.up.sonar, apply:()=>{S.up.sonar++;}},
+  {id:'lure', max:8, lv:()=>S.up.lure, apply:()=>{S.up.lure++;}},
+  {id:'tank', max:8, lv:()=>(S.up.tank||0), apply:()=>{S.up.tank=(S.up.tank||0)+1;}}
 ];
 const UPG_BY={}; UPG.forEach(u=>UPG_BY[u.id]=u);
 const UPG_IDS=[...new Set(UPG.map(u=>u.id))];   // 表示はこちら。プールは漁師が3枚あるため
@@ -866,6 +1003,7 @@ const S={
   rt:0, shake:0, freeze:0, pop:0, pops:[], burst:null, inRange:0,
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
+  phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0,
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
 const TONS=[9,19,49,119,199];
@@ -1008,6 +1146,69 @@ function netPower(){                       // 表示用の本/秒（1周期あ�
   return S.inRange*netTake()/Math.max(.001,netCycle()+NET.pull);
 }
 
+/* ================= 経営（港・燃料・船倉・金） =================
+   3分のスコアアタックをやめ、漁 → 帰港 → 換金 → 投資 → 再出港のループにする。
+   さわる数字はこのブロックに全部ある。バランスはここだけ見ればいい。 */
+const PORT={
+  x:0, y:0,            // 港の位置。ここが世界の原点で、東（+x）ほど良い漁場になる
+  r:190,               // この円に入ると入港が始まる
+  dock:{x:34, y:2},    // 船着場。着岸するとここへ吸い寄せられる
+  approach:64,         // 着岸・出港の自動移動の速さ(px/s)
+  out:230              // 出港でここまで離れたら操船を返す
+};
+const SEA={
+  near:500,            // ここより内側は近海。倍率1
+  far:4000,            // ここで倍率が上限になる。小型船の航続がおよそ1500〜2500pxなので、
+                       // これを大きくしすぎると「沖が有利」が一生体感できない
+  countMax:2.0,        // 遠洋での「群れの数」の倍率
+  sizeMax:3.4,         // 遠洋での「群れの大きさ」の倍率
+  tightMax:0.62,       // 遠洋での群れの半径。小さいほど密で、竿の下の魚が増える＝漁獲効率
+  portClear:420        // 港からこの距離までは魚を湧かせない。岸壁の真下に群れが居ると、
+                       // それを追っているだけで港に吸い込まれて漁が終わってしまう
+};
+const FUEL={
+  drain:1.0,           // 毎秒の消費。仕様どおり時間経過だけで減らす
+  boostMul:1.0,        // 倍速中の追加倍率。1でちょうど仕様どおり
+  dryPenalty:0.5       // 燃料切れで帰ったときの水揚げ倍率
+};
+const YEN=50;          // カツオ1本の値段
+/* 船。art は既存の船体グラフィック(1〜5)のどれを使うか。
+   seats は乗員上限で、その船に描かれている釣り座の数を超えては置けない */
+const SHIPS=[
+  {id:'small',  art:1, seats:8,  hold:500,  fuel:100, price:0},
+  {id:'medium', art:3, seats:18, hold:2000, fuel:220, price:80000},
+  {id:'large',  art:5, seats:32, hold:8000, fuel:420, price:700000}
+];
+/* 港での値段。n 段目の値段 = base * mul^n */
+const PRICE={
+  crew:  {base:3000, mul:1.18},
+  rate:  {base:8000, mul:1.60},
+  engine:{base:5000, mul:1.50},
+  sonar: {base:4000, mul:1.50},
+  lure:  {base:6000, mul:1.50},
+  tank:  {base:4000, mul:1.50}
+};
+const TANK_STEP=0.35;  // 燃料タンク1段で最大燃料が何割増えるか
+const TANK_MAX=8;
+
+function ship(){ return SHIPS[S.shipIdx]; }
+function holdMax(){ return ship().hold; }
+function holdFull(){ return S.hold>=holdMax(); }
+function fuelMax(){ return Math.round(ship().fuel*(1+TANK_STEP*(S.up.tank||0))); }
+function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
+/* 0=近海 1=遠洋。港からの距離だけで決まる */
+function seaRich(){ return clamp((portDist()-SEA.near)/(SEA.far-SEA.near),0,1); }
+function costOf(id){
+  const P=PRICE[id]; if(!P) return Infinity;
+  const n = id==='crew' ? (S.up.crew-2) : (id==='tank' ? (S.up.tank||0) : S.up[id]);
+  return Math.round(P.base*Math.pow(P.mul,n));
+}
+function canBuy(id){
+  if(id==='crew') return S.up.crew<stat.seats();
+  if(id==='tank') return (S.up.tank||0)<TANK_MAX;
+  const u=UPG_BY[id]; return u ? S.up[id]<u.max : false;
+}
+
 const stat = {
   rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
   speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1+0.045*(u.hull-1));},
@@ -1015,7 +1216,7 @@ const stat = {
   sonar:(u)=>250*Math.pow(1.32,(u||S.up).sonar-1),
   lureR:(u)=>{u=u||S.up; return u.lure===0?0:150+70*u.lure;},
   lureF:()=>S.up.lure*3.4,
-  seats:(u)=>boats[(u||S.up).hull-1].seatX.length*2,
+  seats:()=>{ const sh=ship(); return Math.min(sh.seats, boats[sh.art-1].seatX.length*2); },
   power:(u)=>{const {n,q,rem,over}=rodSplit(u);       // 船全体の本/秒
     return BARE*(rem*Math.pow(ROD,q+1)+(n-rem)*Math.pow(ROD,q))*Math.pow(ACC,over);},
   rx:()=>HULL_LEN[S.up.hull-1]/2+24,
@@ -1042,6 +1243,7 @@ function valOf(id,u){
       r={n: v<100? v.toFixed(1) : fmt(Math.round(v)), u:t('unit.rate')}; break; }
     case 'engine': r={n:(stat.speed(u)*0.25).toFixed(1), u:t('unit.knot')}; break;
     case 'sonar':  r={n:'+'+Math.round((stat.sonar(u)/SONAR_BASE-1)*100)+'%', u:''}; break;
+    case 'tank':   r={n:String(Math.round(ship().fuel*(1+TANK_STEP*(u.tank||0)))), u:''}; break;
     case 'lure':   r = u.lure===0 ? {n:t('unit.none'), u:''}
                      : {n:'+'+Math.round((stat.lureR(u)/LURE_BASE-1)*100)+'%', u:''}; break;
   }
@@ -1114,21 +1316,26 @@ function makeSchool(x,y,count){
   return s;
 }
 function manageWorld(dt){
-  const B=S.boat, p=S.t/GAME_TIME;
-  const target=14+Math.floor(p*10), DESP=1000;
+  const B=S.boat, p=seaRich();          // 時間ではなく港からの距離。遠いほど濃い海になる
+  const target=Math.round(14*(1+(SEA.countMax-1)*p)), DESP=1000;
   for(let i=S.schools.length-1;i>=0;i--){
     const s=S.schools[i];
-    if(s.alive<=0 || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){ S.totalFish-=s.alive; S.schools.splice(i,1); }
+    const near=Math.hypot(s.cx-PORT.x,s.cy-PORT.y)<SEA.portClear*0.8;
+    if(s.alive<=0 || near || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){ S.totalFish-=s.alive; S.schools.splice(i,1); }
   }
   let guard=0;
   const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
   while(S.schools.length<target && S.totalFish<cap && guard++<6){
-    const q=p*p;   // 規模は後半で一気に伸ばす。序盤は小さい群れを次々に乗り換えるテンポを優先
-    const n=Math.round(rnd(50+q*850, 150+q*1450)*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
+    const q=p*p;   // 沖ほど一気に伸ばす。近海は小さい群れを次々に乗り換えるテンポを優先
+    const n=Math.round(rnd(50,150)*(1+(SEA.sizeMax-1)*q)*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
     // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
     // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
     const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);
-    S.schools.push(makeSchool(B.x+Math.cos(a)*d, B.y+Math.sin(a)*d, n));
+    const sxw=B.x+Math.cos(a)*d, syw=B.y+Math.sin(a)*d;
+    if(Math.hypot(sxw-PORT.x,syw-PORT.y)<SEA.portClear+schoolRadius(n)) continue;   // 港の足元は空
+    const sc=makeSchool(sxw, syw, n);
+    sc.rx*=1-(1-SEA.tightMax)*p; sc.ry*=1-(1-SEA.tightMax)*p;   // 沖ほど密＝漁獲効率
+    S.schools.push(sc);
     S.totalFish+=n;
   }
   if(S.mode!=='play' || !S.started) return;
@@ -1348,6 +1555,7 @@ function updateFishing(dt){
   }
   S.inRange=up.length+dn.length;                // 竿の下に今いる魚。入れ食いの判定に使う
   if(eff<=0.001) return;                        // 飛ばしすぎ。竿は上がっている
+  if(holdFull()) return;                        // 船倉が一杯。これ以上は積めない
   for(const fm of S.crew){
     if(fm.pose===1){ fm.pt-=dt; if(fm.pt<=0){ fm.pose=0; } }
     fm.cd-=dt;
@@ -1368,7 +1576,7 @@ function updateFishing(dt){
   }
 }
 function doCatch(fm,o){
-  o.f.alive=false; o.s.alive--; S.totalFish--; S.score++; S.prog++;
+  o.f.alive=false; o.s.alive--; S.totalFish--; S.score++; S.prog++; S.hold++;
   fm.pose=1; fm.pt=.28; placeCrew();
   S.parts.push({x:o.f.wx, y:o.f.wy, x0:o.f.wx, y0:o.f.wy, t:0, dur:.28, a:o.f.a, d:o.f.dd, fm});
   S.rings.push({x:o.f.wx, y:o.f.wy, t:0});
@@ -1445,6 +1653,66 @@ function openChest(){
   toastEl.classList.add('on');
   clearTimeout(openChest._t);
   openChest._t=setTimeout(()=>toastEl.classList.remove('on'),2600);
+}
+
+/* ================= 港と航海 ================= */
+/* SEA -> DOCKING -> PORT -> DEPARTING -> SEA。操船できるのは SEA のときだけ */
+function inPortArea(){ return portDist()<PORT.r; }
+function dockPos(){ return {x:PORT.x+PORT.dock.x, y:PORT.y+PORT.dock.y}; }
+
+function updateVoyage(dt){
+  if(S.phase==='sea'){
+    S.fuel-=FUEL.drain*dt*(navBoost()?FUEL.boostMul:1);
+    if(S.fuel<=0){                       // 燃料切れ。沈めも殺しもせず、港へ戻して半値にする
+      S.fuel=0; S.dry=true;
+      const d=Math.max(1,portDist());
+      S.boat.x=PORT.x+(S.boat.x-PORT.x)/d*(PORT.r-6);   // 港の縁まで曳かれてきた扱い
+      S.boat.y=PORT.y+(S.boat.y-PORT.y)/d*(PORT.r-6);
+      S.boat.sp=0; S.boat.vx=0; S.boat.vy=0;
+      beginDocking();
+    }else if(inPortArea() && S.voyage>0) beginDocking();
+    return;
+  }
+  if(S.phase==='docking' || S.phase==='departing'){
+    const B=S.boat;
+    let tx,ty;
+    if(S.phase==='docking'){ const d=dockPos(); tx=d.x; ty=d.y; }
+    else { tx=PORT.x+(PORT.out+40); ty=PORT.y; }
+    const dx=tx-B.x, dy=ty-B.y, d=Math.hypot(dx,dy);
+    const step=Math.min(d, PORT.approach*dt);
+    if(d>0.001){ B.x+=dx/d*step; B.y+=dy/d*step; B.hd=Math.atan2(dy,dx); B.face=dx>0?1:-1; }
+    B.sp=PORT.approach; B.vx=dx/(d||1)*B.sp; B.vy=dy/(d||1)*B.sp; B.bob+=dt*2.4; placeCrew();
+    if(S.phase==='docking' && d<2.5){ B.sp=0; B.vx=0; B.vy=0; arrivePort(); }
+    if(S.phase==='departing' && portDist()>PORT.out){ B.sp=0; S.phase='sea'; }
+  }
+}
+function beginDocking(){
+  S.phase='docking';
+  S.fever=false; S.fvT=0; S.fvRound=0;
+  S.dir.x=0; S.dir.y=0; S.dir.t=1;
+  S.stick.id=-1; S.stick.on=false;
+}
+/* 着岸したら、水揚げ・換金・給油をまとめて自動でやる（仕様12） */
+function arrivePort(){
+  const rate = S.dry?FUEL.dryPenalty:1;
+  const fish=S.hold, yen=Math.round(fish*YEN*rate);
+  S.money+=yen; S.hold=0;
+  S.fuel=fuelMax();
+  S.landed={fish, yen, dry:S.dry};
+  S.dry=false;
+  S.phase='port';
+  saveGame();
+  showPort();
+  sfxChest();
+}
+function departPort(){
+  if(S.phase!=='port') return;
+  hidePort();
+  S.voyage++;
+  S.phase='departing';
+  S.landed=null;
+  audioInit();
+  saveGame();
 }
 
 /* ================= 船 ================= */
@@ -1580,6 +1848,42 @@ function drawSea(){
   ctx.fillStyle=patSurf; ctx.fillRect(0,0,VW+64,VH+64);
   ctx.restore();
   ctx.fillStyle=topGrad; ctx.fillRect(-5,-5,VW+10,VH+10);   // 揺れたぶんの余白まで塗る
+}
+/* 港。海の上に1枚置くだけ。世界の原点に船着場が来るよう左上を逆算する */
+function drawPort(){
+  const B=S.boat, ox=VW/2-B.x, oy=VH/2-B.y;
+  const x=PORT.x-PORT_ANCHOR.x+PORT.dock.x+ox, y=PORT.y-PORT_ANCHOR.y+PORT.dock.y+oy;
+  if(x>VW||y>VH||x+PORT_W<0||y+PORT_H<0) return;
+  ctx.drawImage(portCv, x|0, y|0);
+}
+/* 港が画面の外に出ているあいだ、画面の縁に方角を出す（仕様9）。
+   海図もミニマップも出さない。これだけを頼りに戻る */
+function drawPortArrow(){
+  if(S.phase!=='sea') return;
+  const B=S.boat, sx=VW/2-(B.x-PORT.x), sy=VH/2-(B.y-PORT.y);
+  const m=26;
+  if(sx>m && sx<VW-m && sy>m && sy<VH-m) return;     // 港が見えているなら出さない
+  const a=Math.atan2(PORT.y-B.y, PORT.x-B.x);
+  /* 上は時計と積荷、下は強化チップと魚探が居る。その帯を避けた楕円に乗せる */
+  const top=42, bot=VH-58;
+  const cx=VW/2, cy=(top+bot)/2, rx=VW/2-24, ry=(bot-top)/2;
+  const ca=Math.cos(a), sa=Math.sin(a);
+  const k=Math.min(rx/Math.max(1e-3,Math.abs(ca)), ry/Math.max(1e-3,Math.abs(sa)));
+  const px0=cx+ca*k, py0=cy+sa*k;
+  ctx.save();
+  ctx.translate(px0|0, py0|0); ctx.rotate(a);
+  ctx.fillStyle='#03121d';
+  ctx.beginPath(); ctx.moveTo(9,0); ctx.lineTo(-6,-6); ctx.lineTo(-3,0); ctx.lineTo(-6,6); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f2b32c';
+  ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(-5,-5); ctx.lineTo(-2,0); ctx.lineTo(-5,5); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  const km=portDist()*M_PER_PX;
+  const s2=fmtDist(km);
+  ctx.font='6px "M PLUS 1 Code",monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  const tx=clamp(px0, 22, VW-22)|0, ty=clamp(py0+(py0<cy?11:-11), top+6, bot-4)|0;
+  ctx.fillStyle='#03121d';
+  for(let d=-1;d<=1;d++) for(let e=-1;e<=1;e++) ctx.fillText(s2, tx+d, ty+e);
+  ctx.fillStyle='#f2b32c'; ctx.fillText(s2, tx, ty);
 }
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
@@ -1933,10 +2237,10 @@ function draw(){
     sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
   }
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
-  drawSea(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
+  drawSea(); drawPort(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
-  drawBurst(); drawStick();
+  drawPortArrow(); drawBurst(); drawStick();
 }
 
 /* ================= 魚群探知機 ================= */
@@ -2038,6 +2342,7 @@ function drawRadar(){
 const frameEl=document.getElementById('frame');
 const hud=document.getElementById('hud');
 const elTime=document.getElementById('time'), elClock=document.getElementById('clock');
+const elCatchUnit=document.getElementById('lblCatchUnit');
 const elScore=document.getElementById('score'), elFill=document.getElementById('lvfill');
 const elLvNum=document.getElementById('lvnum'), elStats=document.getElementById('stats');
 const toastEl=document.getElementById('toast'), toastItems=document.getElementById('toastitems');
@@ -2072,10 +2377,10 @@ const elCatch=document.querySelector('.catch'), elFever=document.getElementById(
 const elFvBadge=document.getElementById('fvbadge'), elFvBar=document.getElementById('fvbar');
 const elFvBig=document.getElementById('fvbig');
 const elFvRound=document.getElementById('fvround');
+const elFuelFill=document.getElementById('fuelfill');
 function updateHUD(){
-  const rem=Math.max(0,GAME_TIME-S.t);
   elScore.style.transform = S.pop>0.01 ? 'scale('+(1+0.26*S.pop)+')' : '';
-  const playing=S.mode==='play';
+  const playing=S.phase==='sea';
   // 縁の赤みもバーと同じ時計。こちらは竿の間隔で明滅しないよう頭を落としてある
   const dry=clamp((FV_FADE-S.fvT)/FV_FADE,0,1);
   elFever.style.opacity = S.fever ? (1-0.85*dry).toFixed(2) : '0';
@@ -2089,9 +2394,13 @@ function updateHUD(){
     setTxt(elFvRound, t('hud.round',{n:S.fvRound}));
     elFvBadge.style.transform='translate(-50%,0) scale('+(1+0.10*S.fvPulse).toFixed(3)+')';
   }
-  setTxt(elTime, rem>10 ? Math.floor(rem/60)+':'+String(Math.floor(rem%60)).padStart(2,'0') : rem.toFixed(1));
-  elClock.classList.toggle('warn', rem<=15);
-  setTxt(elScore, fmt(S.score));
+  const fu=clamp(S.fuel/Math.max(1,fuelMax()),0,1);
+  elFuelFill.style.width=(fu*100).toFixed(1)+'%';
+  setTxt(elTime, Math.round(fu*100)+'%');
+  elClock.classList.toggle('warn', fu<=0.25);
+  setTxt(elScore, fmt(S.hold));
+  setTxt(elCatchUnit, '/ '+fmt(holdMax()));
+  elCatch.classList.toggle('full', holdFull());
   /* 強化が run から消えたので、このバーは今なにも指していない（HTML側で畳んである） */
   UPG_IDS.forEach(id=>{
     const u=UPG_BY[id];
@@ -2157,61 +2466,34 @@ window.addEventListener('keydown',e=>{
 
 /* ================= 開始・終了 ================= */
 const scrResult=document.getElementById('result'), promptEl=document.getElementById('prompt');
+/* 1回の航海の仕切り直し。所持金・船・強化は永続なので触らない */
 function reset(){
   S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
+  S.hold=0; S.dry=false; S.landed=null;
   S.schools.length=0; S.chests.length=0; S.crew.length=0;
   S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
   trawlReset();
   S.fvT=0; S.fvRound=0; S.fvLock=0; S.fvPulse=0; S.fever=false; S.chain=0; S.inRange=0; S.pop=0; S.shake=0; S.freeze=0; S.burst=null;
-  S.up={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
-  S.start={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
-  Object.assign(S.boat,{x:0,y:0,vx:0,vy:0,hd:0,sp:0,face:1,bob:0});
+  S.start=Object.assign({},S.up);
+  const d=dockPos();
+  Object.assign(S.boat,{x:d.x,y:d.y,vx:0,vy:0,hd:0,sp:0,face:1,bob:0});
+  S.fuel=fuelMax();
   S.dir.x=0; S.dir.y=0; S.dir.t=1; S.menu=false;
   S.stick.id=-1; S.stick.on=false; S.stick.f=0;
   layoutCrew();
-  S.schools.push(makeSchool(175,rnd(-28,28),130)); S.totalFish+=130;
+  S.schools.push(makeSchool(PORT.x+SEA.portClear+150,PORT.y+rnd(-28,28),130)); S.totalFish+=130;
 }
-function startGame(){          // リザルトからのやり直し
-  audioInit(); reset();
-  scrMenu.classList.remove('on');
-  S.mode='play'; S.started=true;
-  promptEl.classList.add('gone');
-  scrResult.classList.remove('on');
-  hud.classList.add('on');
-  lastSec=GAME_TIME;
-}
-function beginRun(){           // 最初の入力で走り出す
-  if(S.started || S.mode!=='play') return;
+/* 最初の一手。タイトルを畳んで港に着ける */
+function beginRun(){
+  if(S.started) return;
   S.started=true;
   audioInit();
   promptEl.classList.add('gone');
-  hud.classList.add('on');
-  lastSec=GAME_TIME;
+  if(S.phase==='port') showPort(); else hud.classList.add('on');
 }
-const RANKS=[1500,3000,5000,7000,10000,1e9];
-function endGame(){
-  S.mode='result'; S.started=false; hud.classList.remove('on');
-  S.fever=false; S.fvT=0; elFever.style.opacity='0'; elFvBadge.classList.remove('on'); elFvBadge.style.transform=''; elFvBig.classList.remove('go');
-  const nb=S.score>S.best;
-  if(nb){ S.best=S.score; saveBest(S.best); }
-  document.getElementById('rscore').innerHTML=fmt(S.score)+'<span>'+t('res.scoreUnit')+'</span>';
-  const ri=RANKS.findIndex(x=>S.score<x)+1;
-  document.getElementById('rrank').innerHTML=t('rank.'+ri)+'<small>'+t('rank.'+ri+'.fl')+'</small>';
-  document.getElementById('rbestwrap').innerHTML = nb? '<span class="newbest">'+t('res.newbest')+'</span>':'';
-  const p0=stat.power(S.start), p1=stat.power(S.up);
-  document.getElementById('rgrow').innerHTML=
-    t('res.grow',{a:'<s>'+p0.toFixed(1)+'</s>',b:'<b>'+p1.toFixed(1)+'</b>'})+' <em>'+t('res.growX',{c:(p1/p0).toFixed(1)})+'</em>';
-  document.getElementById('rstats').innerHTML=
-    UPG_IDS.map(id=>{
-      const u=UPG_BY[id];
-      const a=valOf(u.id,S.start), b=valOf(u.id,S.up);
-      return '<div>'+t('up.'+u.id+'.short')+'<b class="num">'+b.h+'<span>'+b.u+'</span></b><em>'+t('res.from',{v:a.n+a.u})+'</em></div>';
-    }).join('');
-  document.getElementById('rbest').textContent=t('res.best',{n:fmt(S.best)});
-  scrResult.classList.add('on');
-  sfxEnd();
-}
+function startGame(){ reset(); S.phase='port'; S.mode='play'; S.started=true;
+  promptEl.classList.add('gone'); scrMenu.classList.remove('on'); showPort(); }
 
 /* ================= 入力 ================= */
 const STICK_R=26, STICK_DEAD=5;
@@ -2319,10 +2601,103 @@ function sfxPick(){ tone(880,.12,'square',.05,1.2); }
 function sfxNet(){ tone(180,.20,'sawtooth',.09,.7); tone(430,.14,'square',.05,1.25,.04); }
 function sfxChest(){ [392,523,659,784,1046].forEach((f,i)=>tone(f,.26,'triangle',.08,1,i*.06)); }
 function sfxEnd(){ tone(196,1.4,'sawtooth',.10,.7); tone(147,1.6,'sine',.08,.75,.05); }
-function tickCountdown(){
-  const rem=Math.ceil(GAME_TIME-S.t);
-  if(rem<lastSec){ lastSec=rem; if(rem<=5&&rem>0) tone(1046,.09,'square',.06); }
+/* ================= 港のUI ================= */
+/* 別画面へは飛ばさない。港の絵の上に看板を置いて、押すと品書きが出る（仕様13） */
+const elPort=document.getElementById('port'), elPMoney=document.getElementById('pmoney');
+const elPShop=document.getElementById('pshop'), elPLog=document.getElementById('plog');
+let shopOpen=null;
+const SHIP_NAME=['小型一本釣り船','中型一本釣り船','大型一本釣り船'];
+function yen(n){ return '¥'+fmt(n); }
+
+function showPort(){
+  elPort.hidden=false; hud.classList.remove('on');
+  shopOpen=null; paintPort();
 }
+function hidePort(){ elPort.hidden=true; hud.classList.add('on'); }
+
+function paintPort(){
+  elPMoney.textContent=yen(S.money);
+  const L=S.landed;
+  elPLog.innerHTML = L
+    ? ('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>'
+       + (L.dry?'\n<u>燃料切れ。半値でしか買ってもらえなかった</u>':'')
+       + '\n給油 <b>'+fuelMax()+'</b>  船倉 <b>'+fmt(holdMax())+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>')
+    : ('船倉 <b>'+fmt(holdMax())+'</b>  燃料 <b>'+fuelMax()+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>');
+  document.querySelectorAll('.psign').forEach(b=>b.classList.toggle('on', b.dataset.shop===shopOpen));
+  if(!shopOpen){ elPShop.hidden=true; return; }
+  elPShop.hidden=false; elPShop.innerHTML='';
+  if(shopOpen==='ship') paintShips(); else paintGearShop(shopOpen==='crew'?['crew']:['rate','engine','sonar','lure','tank']);
+}
+function shopRow(icon,name,sub,price,ok,onClick){
+  const b=document.createElement('button'); b.className='prow'; b.disabled=!ok;
+  if(icon){ const c=document.createElement('canvas'); c.width=16;c.height=16;
+    c.getContext('2d').drawImage(icon,0,0); b.appendChild(c); }
+  const n=document.createElement('div'); n.className='nm';
+  n.innerHTML=name+(sub?'<em>'+sub+'</em>':''); b.appendChild(n);
+  const pr=document.createElement('div'); pr.className='pr'; pr.textContent=price; b.appendChild(pr);
+  if(ok) b.addEventListener('click',onClick);
+  elPShop.appendChild(b);
+}
+function paintGearShop(ids){
+  for(const id of ids){
+    const u=UPG_BY[id]; if(!u) continue;
+    const maxed=!canBuy(id);
+    const cost=costOf(id);
+    const a=valOf(id,S.up), b2=valOf(id,nextUp(id));
+    let sub = id==='crew' ? (S.up.crew+' / '+stat.seats()+'人')
+            : id==='tank' ? ('最大燃料 '+fuelMax()+' → '+Math.round(ship().fuel*(1+TANK_STEP*((S.up.tank||0)+1))))
+            : (a.n+a.u+' → '+b2.n+b2.u);
+    if(id==='crew' && maxed) sub='釣り座が埋まっている。船を替えるまで雇えない';
+    const ok=!maxed && S.money>=cost;
+    shopRow(ICONS[id], t('up.'+id+'.name'), sub, maxed?'—':yen(cost), ok, ()=>{
+      S.money-=cost; u.apply(); layoutCrew(); saveGame(); sfxPick(); paintPort();
+    });
+  }
+}
+function paintShips(){
+  SHIPS.forEach((sh,i)=>{
+    const own=i<=S.shipIdx;
+    const sub='乗員 '+sh.seats+'  船倉 '+fmt(sh.hold)+'  燃料 '+sh.fuel;
+    const ok=!own && S.money>=sh.price && i===S.shipIdx+1;
+    shopRow(null, SHIP_NAME[i], sub, own?'所有':yen(sh.price), ok, ()=>{
+      S.money-=sh.price; setShip(i); saveGame(); sfxChest(); paintPort();
+    });
+  });
+}
+function setShip(i){
+  S.shipIdx=i; S.up.hull=SHIPS[i].art;
+  S.up.crew=Math.min(S.up.crew, stat.seats());
+  layoutCrew();
+  const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;      // 新しい船も船着場に着けておく
+  S.fuel=fuelMax();
+}
+document.querySelectorAll('.psign').forEach(b=>{
+  b.addEventListener('click',()=>{ shopOpen = shopOpen===b.dataset.shop ? null : b.dataset.shop; paintPort(); });
+});
+document.getElementById('pgo').addEventListener('click',departPort);
+
+/* ================= セーブ ================= */
+const SAVE_KEY='island.save';
+function saveGame(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({
+    v:1, money:S.money, ship:S.shipIdx, voyage:S.voyage,
+    crew:S.up.crew, rate:S.up.rate, rods:S.up.rods||0, engine:S.up.engine,
+    sonar:S.up.sonar, lure:S.up.lure, tank:S.up.tank||0
+  })); }catch(e){}
+}
+function loadGame(){
+  let d=null;
+  try{ d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){}
+  if(!d) return false;
+  S.money=d.money|0; S.voyage=d.voyage|0;
+  S.shipIdx=clamp(d.ship|0,0,SHIPS.length-1);
+  S.up.hull=SHIPS[S.shipIdx].art;
+  S.up.rate=d.rate|0; S.up.rods=d.rods|0; S.up.engine=d.engine|0;
+  S.up.sonar=Math.max(1,d.sonar|0); S.up.lure=Math.max(1,d.lure|0); S.up.tank=d.tank|0;
+  S.up.crew=clamp(d.crew|0, 2, stat.seats());
+  return true;
+}
+
 /* ================= メニュー ================= */
 const scrMenu=document.getElementById('menu'), muteBtn=document.getElementById('mute');
 const mSoundV=document.getElementById('mSoundV');
@@ -2331,27 +2706,20 @@ function paintSound(){
   document.getElementById('mSound').classList.toggle('off', muted);
 }
 function openMenu(v){
-  if(S.mode!=='play') return;
+  if(S.phase!=='sea') return;
   S.menu=v;
   scrMenu.classList.toggle('on', v);
   if(v){ paintSound(); paintGear(); document.getElementById('mSound').focus({preventScroll:true}); }
 }
 muteBtn.addEventListener('click',e=>{ e.stopPropagation(); audioInit(); openMenu(!S.menu); });
 const elHaul=document.getElementById('haul');
-const mGearV=document.getElementById('mGearV');
-function paintGear(){ mGearV.textContent=t('gear.'+S.gear); }
-const GEARS=['pole','seine','trawl'];
-document.getElementById('mGear').addEventListener('click',()=>{   // 切り替えたら仕切り直し
-  S.gear = GEARS[(GEARS.indexOf(S.gear)+1)%GEARS.length];
-  saveGear(S.gear); paintGear(); openMenu(false); startGame();
-});
+function paintGear(){}
 document.getElementById('mSound').addEventListener('click',()=>{ muted=!muted; paintSound(); });
-document.getElementById('mRetry').addEventListener('click',()=>{ openMenu(false); startGame(); });
 document.getElementById('mClose').addEventListener('click',()=>openMenu(false));
 window.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
   e.preventDefault();
-  if(S.mode==='play') openMenu(!S.menu);
+  if(S.phase==='sea') openMenu(!S.menu);
 });
 
 /* ================= 負荷計測（Fキーで開閉） ================= */
@@ -2406,12 +2774,13 @@ function tick(now){
   S.shake=Math.max(0,S.shake-dt*3.4);
   if(S.burst) S.burst.t+=dt;
   if(S.freeze>0) S.freeze-=dt;                   // 止まっている間も閃光だけは進む
-  else if(S.mode==='play' && !S.menu){
+  else if(!S.menu){
     if(S.started) S.t+=dt;
-    updateBoat(dt); manageWorld(dt); updateSchools(dt);
-    if(S.started){ updateFishing(dt); updateFever(dt); }
+    if(S.phase==='sea') updateBoat(dt);
+    manageWorld(dt); updateSchools(dt);
+    updateVoyage(dt);
+    if(S.started && S.phase==='sea'){ updateFishing(dt); updateFever(dt); }
     updateParts(dt);
-    if(S.started){ tickCountdown(); if(S.t>=GAME_TIME) endGame(); }
   }
   const p1=performance.now();
   draw(); drawRadar(); updateHUD();
@@ -2425,17 +2794,16 @@ function applyLang(){
   const set=(id,k)=>{ const e=document.getElementById(id); if(e) e.textContent=t(k); };
   set('h1a','title.h1a'); set('h1b','title.h1b'); set('h1sub','title.sub');
   set('tapHint','title.tap'); set('retry','res.retry');
-  set('lblTime','hud.time'); set('lblCatch','hud.catch'); set('lblCatchUnit','hud.catchUnit');
+  set('lblTime','hud.time'); set('lblCatch','hud.catch');
   set('lvlabel','hud.next');
   set('fvlabel','hud.fever'); set('fvbig','hud.fever');
   elFvRound.textContent=t('hud.round',{n:Math.max(1,S.fvRound)});
   set('lblPickEyebrow','pick.eyebrow'); set('lblPickHead','pick.head'); set('lblResHead','res.head');
-  set('lblMenu','menu.head'); set('mRetry','menu.retry'); set('mClose','menu.close');
+  set('lblMenu','menu.head'); set('mClose','menu.close');
   document.getElementById('mSound').firstChild.nodeValue=t('menu.sound');
-  document.getElementById('mGear').firstChild.nodeValue=t('menu.gear');
   paintSound(); paintGear();
   document.querySelectorAll('#stats .chip b[data-k]').forEach(b=>{ b.textContent=t(b.dataset.k); });
-  document.getElementById('titlebest').textContent = S.best ? t('title.best',{n:fmt(S.best)}) : '';
+  document.getElementById('titlebest').textContent = S.money ? '所持金 '+yen(S.money) : '';
   lastTxt={};
   updateHUD();
   if(S.mode==='levelup') showCards();
@@ -2448,9 +2816,10 @@ window.addEventListener('keydown',e=>{                 // 検証用：デバッ�
 /* ================= 起動 ================= */
 initAssets(); initPatterns(); buildChips();
 try{ const q=new URLSearchParams(location.search).get('lang'); if(q) setLang(q); }catch(e){}
-S.best=loadBest(); S.gear=loadGear();
+buildPort();
+loadGame();
 try{ if(localStorage.getItem('ippon.perf')==='1') perfToggle(true); }catch(e){}
 applyLang();
-reset(); S.mode='play'; S.started=false;
+reset(); S.mode='play'; S.started=false; S.phase='port';
 requestAnimationFrame(tick);
 </script>

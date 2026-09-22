@@ -841,6 +841,31 @@ function buildGull(){
   }
 }
 
+/* ---------------- 錨（港の目印） ---------------- */
+/* 港の方角の矢印と魚探の両方に出す。7x9 */
+const ANCHOR_MAP=[
+  '..###..',
+  '..#.#..',
+  '..###..',
+  '.#####.',
+  '..###..',
+  '#.###.#',
+  '#.###.#',
+  '#######',
+  '.#####.'
+];
+let anchorCv=null;
+function buildAnchor(){
+  const c=mkc(9,11), g=gx(c);
+  for(let y=0;y<9;y++) for(let x=0;x<7;x++){
+    if(ANCHOR_MAP[y][x]!=='#') continue;
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) px(g,x+1+dx,y+1+dy,1,1,'#03121d');
+  }
+  for(let y=0;y<9;y++) for(let x=0;x<7;x++)
+    if(ANCHOR_MAP[y][x]==='#') px(g,x+1,y+1,1,1,'#f2b32c');
+  anchorCv=c;
+}
+
 /* ---------------- 港 ---------------- */
 /* 世界の原点に置く陸と桟橋。船は東（+x）側から入ってくるので、陸は西側に寄せる */
 let portCv=null;
@@ -1352,7 +1377,7 @@ function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
 "use strict";
 /* ================= アセット構築 ================= */
 function initAssets(){
-  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing();
+  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor();
   for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
   for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
     for(let p=0;p<2;p++) for(let i=0;i<3;i++){
@@ -2037,6 +2062,8 @@ function drawPortArrow(){
   ctx.fillStyle='#f2b32c';
   ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(-5,-5); ctx.lineTo(-2,0); ctx.lineTo(-5,5); ctx.closePath(); ctx.fill();
   ctx.restore();
+  // 錨は回さない。向きが読めなくなる
+  if(anchorCv) ctx.drawImage(anchorCv, Math.round(px0-ca*11)-4, Math.round(py0-sa*11)-5);
 }
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
@@ -2477,7 +2504,24 @@ function drawRadar(){
   g.restore();
   g.strokeStyle='rgba(234,243,244,.22)';      // 画面範囲
   g.strokeRect(C-VW/2*k, C-VH/2*k, VW*k, VH*k);
+  {                                           // 陸。魚の反応より先に敷いて、上に錨を置く
+    const L=landRect();
+    const x0=C+(L.x0-B.x)*k, y0=C+(L.y0-B.y)*k, w=(L.x1-L.x0)*k, h=(L.y1-L.y0)*k;
+    if(x0<W && y0<W && x0+w>0 && y0+h>0){
+      g.fillStyle='#4a6b3a'; g.fillRect(x0,y0,w,h);
+      g.fillStyle='#6d6250'; g.fillRect(x0,y0,w,2); g.fillRect(x0,y0+h-2,w,2);
+      g.fillRect(x0,y0,2,h); g.fillRect(x0+w-2,y0,2,h);
+    }
+  }
   drawEchoes(g,C,R,k,B,sw);                   // 魚群の反応（実位置をセルに集計）
+  {                                           // 船着場の錨
+    const d=dockPos(), x=C+(d.x-B.x)*k, y=C+(d.y-B.y)*k;
+    if(x>-8 && x<W+8 && y>-8 && y<W+8 && anchorCv){
+      const sc=Math.max(1,Math.round(W/60));
+      g.imageSmoothingEnabled=false;
+      g.drawImage(anchorCv, Math.round(x-4.5*sc), Math.round(y-5.5*sc), 9*sc, 11*sc);
+    }
+  }
   for(const c of S.chests){                   // 宝箱
     const x=C+(c.x-B.x)*k, y=C+(c.y-B.y)*k;
     g.fillStyle='#f2b32c';

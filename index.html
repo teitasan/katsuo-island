@@ -1958,9 +1958,23 @@ function drawSea(){
   ctx.restore();
   ctx.fillStyle=topGrad; ctx.fillRect(-SEA_PAD,-5,VW+SEA_PAD*2,VH+10);   // 揺れたぶんの余白まで塗る
 }
+/* ================= ワールド→画面 =================
+   変換はここ1か所だけ。draw() の頭で setCam() を1回呼び、
+   各描画は  const ox=OX, oy=OY;  と受けて  world + ox  で画面座標になる。
+   船に付いているもの（竿・糸・網・閃光）は boatSX/boatSY を基準にする。
+
+   VW/2 を直に書くと「船は常に画面中央」を前提にしてしまい、
+   カメラが島へ寄ったときにそれだけ置いていかれる。実際それで釣り糸が取り残され、
+   画面外判定が船基準のままで端の魚が消えた。書くならここだけ。 */
+let camX=0, camY=0;      // カメラのワールド座標
+let OX=0, OY=0;          // ワールド座標に足すと画面座標になる
+function setCam(){ const c=camPos(); camX=c.x; camY=c.y; OX=VW/2-camX; OY=VH/2-camY; }
+function boatSX(){ return S.boat.x+OX; }
+function boatSY(){ return S.boat.y+OY; }
+
 /* 港。海の上に1枚置くだけ。世界の原点に船着場が来るよう左上を逆算する */
 function drawPort(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   const o=portOrigin();
   const x=o.x+ox, y=o.y+oy;
   if(x>VW||y>VH||x+PORT_W<0||y+PORT_H<0) return;
@@ -1993,13 +2007,13 @@ function drawSpots(){
 function drawPortRing(){
   if(S.phase==='port'||!portRing) return;
   const B=S.boat, r=PORT.r, dk=dockPos();
-  const x=dk.x-r-2+(VW/2-camX), y=dk.y-r-2+(VH/2-camY);
+  const x=dk.x-r-2+OX, y=dk.y-r-2+OY;
   if(x>VW||y>VH||x+portRing.width<0||y+portRing.height<0) return;
   ctx.drawImage(portRing, x|0, y|0);
 }
 function drawPortArrow(){
   if(S.phase!=='sea') return;
-  const B=S.boat, sx=VW/2-(camX-PORT.x), sy=VH/2-(camY-PORT.y);
+  const B=S.boat, sx=PORT.x+OX, sy=PORT.y+OY;
   const m=26;
   if(sx>m && sx<VW-m && sy>m && sy<VH-m) return;     // 港が見えているなら出さない
   const a=Math.atan2(PORT.y-B.y, PORT.x-B.x);
@@ -2024,13 +2038,6 @@ function drawPortArrow(){
   for(let d=-1;d<=1;d++) for(let e=-1;e<=1;e++) ctx.fillText(s2, tx+d, ty+e);
   ctx.fillStyle='#f2b32c'; ctx.fillText(s2, tx, ty);
 }
-/* すべてのワールド描画の原点。航海中は船と一致し、入港中だけ島へずれる。
-   ここを船のままにしておくと、カメラがずれた側の端が画面外と判定されて消える */
-let camX=0, camY=0;
-/* 船に付いているもの（竿・糸・網・閃光）はここを基準に描く。
-   VW/2 を直に使うとカメラが動いたとき船だけ置いていかれる */
-function boatSX(){ return VW/2+(S.boat.x-camX); }
-function boatSY(){ return VH/2+(S.boat.y-camY); }
 let fishDrawn=0;
 /* 魚は16x16あるので、密な群れでは画面の何倍もの面積を重ね描きしてしまう。
    画面を粗い升目に切って、1升に DENS_CAP 匹より多くは描かない。
@@ -2040,7 +2047,7 @@ const DENS_CELL=6, DENS_CAP=2;
 const DENS_W=Math.ceil((VW+18)/DENS_CELL)+1, DENS_H=Math.ceil((VH+18)/DENS_CELL)+1;
 const densGrid=new Uint8Array(DENS_W*DENS_H);
 function drawSchools(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   fishDrawn=0;
   densGrid.fill(0);
   const k=1/TAU*ANG;
@@ -2064,7 +2071,7 @@ function drawSchools(){
   }
 }
 function drawChests(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   for(const c of S.chests){
     const x=Math.round(c.x+ox), y=Math.round(c.y+oy+Math.sin(c.ph)*1.5);
     if(x<-30||x>VW+30||y<-30||y>VH+30) continue;
@@ -2075,7 +2082,7 @@ function drawChests(){
   }
 }
 function drawWake(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   for(const w of S.wake){
     const u=w.t/1.1;
     ctx.globalAlpha=(1-u)*.5;
@@ -2085,7 +2092,7 @@ function drawWake(){
   ctx.globalAlpha=1;
 }
 function drawGulls(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   for(const s of S.schools){
     const gs=s.gulls; if(!gs) continue;
     const live=Math.ceil(gs.length*s.alive/s.n0);   // 魚が減ると鳥も減っていく
@@ -2107,7 +2114,7 @@ function drawGulls(){
   }
 }
 function drawRings(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   ctx.strokeStyle='#dff0f6'; ctx.lineWidth=1;
   for(const r of S.rings){
     const u=r.t/.36, rr=2+u*8;
@@ -2144,7 +2151,7 @@ function drawBoat(){
   }
 }
 function drawSpray(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   for(const s of S.spray){
     const u=s.t/s.life;
     ctx.globalAlpha=(1-u)*(s.big?1:.8);
@@ -2155,7 +2162,7 @@ function drawSpray(){
   ctx.globalAlpha=1;
 }
 function drawBoil(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   ctx.lineWidth=1;
   for(const b of S.boil){
     const u=b.t/b.life, x=Math.round(b.x+ox), y=Math.round(b.y+oy);
@@ -2173,7 +2180,7 @@ function drawBoil(){
 }
 function drawLines(){
   if(netGear()) return;                       // 網のときは竿を出さない
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   const bx=Math.round(boatSX()), by=Math.round(boatSY());
   const by0=by+bobPx, HULL_BOT=4;
   for(const fm of S.crew){
@@ -2240,7 +2247,7 @@ function drawStick(){
 }
 function drawTrawl(){
   if(S.gear!=='trawl') return;
-  const B=S.boat, T=S.trawl, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, T=S.trawl, ox=OX, oy=OY;
   const ca=Math.cos(T.hd), sa=Math.sin(T.hd);
   const hd2=TR.depth*0.5;
   const P=(lx,ly)=>[T.x+lx*ca-ly*sa+ox, T.y+lx*sa+ly*ca+oy+bobPx];
@@ -2296,7 +2303,7 @@ function drawTrawl(){
 }
 function drawNet(){
   if(S.gear!=='seine') return;
-  const B=S.boat, N=S.net, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, N=S.net, ox=OX, oy=OY;
   const cx=boatSX(), cy=boatSY()+bobPx, R=netR(), Ry=R*NET.flat;
   if(!navBoost()){
     const pulling=N.phase==='pull';
@@ -2345,7 +2352,7 @@ function drawNet(){
   }
 }
 function drawPops(){
-  const B=S.boat, ox=VW/2-camX, oy=VH/2-camY;
+  const B=S.boat, ox=OX, oy=OY;
   for(const p of S.pops){
     const u=p.t/.55, k=p.fv?2:1;
     ctx.globalAlpha=Math.min(1, u<.12 ? u/.12 : (1-u)*(1-u)*1.4);
@@ -2383,7 +2390,7 @@ function draw(){
     const m=S.shake*S.shake*3.4;
     sx=Math.round(Math.sin(S.rt*82)*m); sy=Math.round(Math.cos(S.rt*67)*m);
   }
-  const cam=camPos(); camX=cam.x; camY=cam.y;
+  setCam();
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls();
@@ -2764,8 +2771,8 @@ const SPOTS=[
 ];
 /* スプライト座標の矩形を、いま画面のどこに出ているかへ直す */
 function spotBox(sp){
-  const o=portOrigin(), cam=camPos();
-  const x0=sp.sx+o.x-cam.x+VW/2, y0=sp.sy+o.y-cam.y+VH/2;
+  const o=portOrigin();
+  const x0=sp.sx+o.x+OX, y0=sp.sy+o.y+OY;
   return {x0, y0, x1:x0+sp.sw, y1:y0+sp.sh};
 }
 function spotAt(mx,my){

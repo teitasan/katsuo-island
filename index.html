@@ -1167,12 +1167,15 @@ const SEA={
                        // それを追っているだけで港に吸い込まれて漁が終わってしまう
 };
 /* 燃料は時間ではなく「走った距離」で減る。単位はそのまま px なので、
-   燃料の残り = あと何 px 走れるか。HUD には港までの距離と同じ km で出している。
-   止まっている間は減らないので、群れの上で粘るのは無料。遠くへ出る判断だけに燃料が効く */
+   燃料の残り = ほぼ「あと何 px 走れるか」。HUD には港までの距離と同じ km で出している。
+   停船中もわずかに食う（idleRate）。集魚を積んで居座る漁も成立させたいので潰さないが、
+   0 だとそれが無料になってしまうので、そのぶんの燃料は払わせる */
 const FUEL={
   perPx:1.0,           // 1px 走るのに使う燃料。1 なら燃料＝そのまま航続距離(px)
   boostPenalty:0.8,    // 倍速のときの割増。0.8 なら同じ距離に1.8倍食う
-  idle:0,              // 停まっていても減る分(毎秒)。0で完全に距離だけ
+  idleRate:0.1,        // 機関は停めない。巡航で走っているときの何割かを、止まっていても食う。
+                       // 集魚を積んで居座る漁は潰さない。ただ 0 だとそれが無料になるので、
+                       // ちゃんと燃料を払わせる。上げるほど居座りが不利になる
   dryPenalty:0.5       // 燃料切れで帰ったときの水揚げ倍率
 };
 const YEN=50;          // カツオ1本の値段
@@ -1666,7 +1669,8 @@ function updateVoyage(dt){
   if(S.phase==='sea'){
     const sp=S.boat.sp, cruise=Math.max(1,stat.speed());
     const over=clamp((sp/cruise-1)/(NAV_BOOST-1),0,1);      // 0=巡航 1=倍速
-    S.fuel-=sp*dt*FUEL.perPx*(1+FUEL.boostPenalty*over) + FUEL.idle*dt;
+    const cruiseBurn=stat.speed()*FUEL.perPx;               // 巡航1秒ぶんの消費
+    S.fuel-=sp*dt*FUEL.perPx*(1+FUEL.boostPenalty*over) + cruiseBurn*FUEL.idleRate*dt;
     if(S.fuel<=0){                       // 燃料切れ。沈めも殺しもせず、港へ戻して半値にする
       S.fuel=0; S.dry=true;
       const d=Math.max(1,portDist());

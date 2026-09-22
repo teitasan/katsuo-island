@@ -204,7 +204,7 @@
   .best{margin-top:.7em; font-size:.78em; letter-spacing:.18em; color:var(--dim)}
 
   /* 網を揚げた瞬間の一括表示 */
-  .haul{position:absolute; left:50%; top:36%; transform:translate(-50%,-50%); z-index:3;
+  .haul{position:absolute; left:50%; top:19%; transform:translate(-50%,-50%); z-index:3;
     font-size:3.4em; font-weight:700; letter-spacing:.02em; color:var(--gold);
     pointer-events:none; opacity:0; white-space:nowrap;
     text-shadow:0 .04em 0 #6b4a10, 0 .18em .7em rgba(242,179,44,.65)}
@@ -842,19 +842,20 @@ function buildGull(){
   }
 }
 
-/* ---------------- 小判（水揚げで魚が変わる） ---------------- */
-/* 回転の4コマ。横幅を潰すだけで回って見える */
-const coinCv=[];
-function buildCoin(){
-  const ws=[7,5,3,1];
-  for(const w of ws){
-    const c=mkc(9,9), g=gx(c), x0=(9-w)/2|0;
-    px(g,x0,1,w,7,'#8a5f12');
-    px(g,x0,2,w,5,'#f2b32c');
-    px(g,x0,2,w,1,'#ffe9a8');
-    if(w>=5){ px(g,x0+1,4,w-2,1,'#c98a12'); px(g,x0+1,3,1,1,'#fff6dd'); }
-    coinCv.push(c);
+/* ---------------- 札束（水揚げ場で魚が変わる） ---------------- */
+let noteCv=null;
+function buildNote(){
+  const c=mkc(13,9), g=gx(c);
+  for(let i=0;i<3;i++){                       // 3枚ぶん重ねてずらす
+    const x=1+i, y=4-i;
+    px(g,x,y,11,5,'#6f6848');                 // 影
+    px(g,x,y,11,4,'#e4dcb4');
+    px(g,x,y,11,1,'#f6f0d4');
+    px(g,x+4,y,3,4,'#cfc48e');                // 帯
+    px(g,x+5,y+1,1,2,'#9c8f5a');
   }
+  px(g,3,1,11,1,'#fffdf0');
+  noteCv=c;
 }
 
 /* ---------------- 錨（港の目印） ---------------- */
@@ -1265,7 +1266,8 @@ const PORT={
   r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
   out:110,             // 出港で船着場からここまで離れたら操船を返す
-  view:{x:-70, y:-10}  // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
+  view:{x:-70, y:-10}, // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
+  market:{x:-40, y:-6} // 水揚げ場。漁協の前。魚はここへ向かって飛ぶ
 };
 /* 海の濃さは港からの距離の「指数」で増やす。上限のあるランプだと、タンクが
    その上限に届いた時点で一番おいしい漁場が動かなくなる。一定距離ごとに倍、
@@ -1394,7 +1396,7 @@ function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
 "use strict";
 /* ================= アセット構築 ================= */
 function initAssets(){
-  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor(); buildCoin();
+  buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor(); buildNote();
   for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
   for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
     for(let p=0;p<2;p++) for(let i=0;i<3;i++){
@@ -1853,15 +1855,14 @@ function beginDocking(){
    数字が一瞬で増えるより、粒が出きるのを見ているほうが手応えが残る */
 const HAUL={
   sec:3.0,          // 全体の秒数
-  emit:0.72,        // そのうち魚を投げ続ける割合。残りは最後の粒が消えるまでの余韻
-  maxPops:420,      // 出す粒の上限。これを超える釣果は1粒が複数匹ぶんになる。
-                    // 増やしすぎると船の上が白い塊になって、粒が1つずつ見えなくなる
-  rise:118,         // 跳ね上がる初速
-  spread:72,        // 横のばらつき
-  grav:260,
-  spin:9,           // 魚の回転の速さ
-  flip:0.34,        // 跳ねてから金に変わるまでの秒数
-  coinSec:0.5,      // 金に変わってから消えるまで
+  fly:0.5,          // 船から水揚げ場まで飛ぶ秒数
+  flyVar:0.22,      // 飛行時間のばらつき。揃いすぎると1本の線に見える
+  arc:52,           // 放物線の高さ
+  spin:12,          // 飛んでいる間の回転
+  noteSec:0.42,     // 札束が出てから消えるまで
+  noteRise:24,      // 札束が浮き上がる高さ
+  maxPops:200,      // 出す粒の上限。これを超える釣果は1粒が複数匹ぶんになる。
+                    // 増やしすぎると弧が白い帯になって、魚が1匹ずつ見えなくなる
   sfxPerSec:16      // 音は間引く。粒の数だけ鳴らすと潰れる
 };
 function arrivePort(){
@@ -1870,7 +1871,7 @@ function arrivePort(){
   S.fuel=fuelMax();
   S.landed={fish, yen, dry:S.dry};
   S.phase='landing';
-  S.land={t:0, fish, yen, money0:S.money, pops:0, sfxT:0,
+  S.land={t:0, fish, yen, money0:S.money, pops:0, done:0, sfxT:0,
           n:Math.min(HAUL.maxPops, Math.max(1,fish))};
   S.parts2.length=0;
   elHaul.classList.remove('go'); elHaul.classList.add('on');
@@ -1886,40 +1887,54 @@ function finishLanding(){
   showPort();
   sfxChest();
 }
+function haulEmitSec(){
+  return Math.max(0.3, HAUL.sec - HAUL.fly*(1+HAUL.flyVar) - HAUL.noteSec);
+}
 function updateLanding(dt){
   const L=S.land; if(!L) return;
   L.t+=dt;
   const B=S.boat, b=boats[S.up.hull-1];
-  const emitSec=HAUL.sec*HAUL.emit;
-  const u=clamp(L.t/emitSec,0,1);
-  // 粒を出す
+  const u=clamp(L.t/haulEmitSec(),0,1);
   const want=Math.round(L.n*u);
   let make=want-L.pops;
   L.pops=want;
   L.sfxT-=dt;
+  const mx=PORT.x+PORT.market.x, my=PORT.y+PORT.market.y;
   while(make-->0){
     S.parts2.push({
-      x:B.x+rnd(-b.len*0.42,b.len*0.42), y:B.y+rnd(-2,3),
-      vx:rnd(-HAUL.spread,HAUL.spread), vy:-HAUL.rise*rnd(0.8,1.25),
-      t:0, a:rnd(0,TAU), av:rnd(-HAUL.spin,HAUL.spin), ph:0, d:rint(0,2)
+      x0:B.x+rnd(-b.len*0.44,b.len*0.44), y0:B.y+rnd(-3,3),
+      x1:mx+rnd(-7,7), y1:my+rnd(-4,4),
+      t:0, dur:HAUL.fly*rnd(1-HAUL.flyVar,1+HAUL.flyVar),
+      arc:HAUL.arc*rnd(0.75,1.25),
+      a:rnd(0,TAU), av:rnd(-HAUL.spin,HAUL.spin),
+      ph:0, x:0, y:0
     });
-    if(L.sfxT<=0){ L.sfxT=1/HAUL.sfxPerSec; tone(880+rnd(-90,180),.05,'square',.035,1.5); }
+    if(L.sfxT<=0){ L.sfxT=1/HAUL.sfxPerSec; tone(760+rnd(-60,220),.05,'square',.032,1.6); }
   }
-  // 数字は粒に合わせて動かす
-  S.money=L.money0+Math.round(L.yen*u);
-  S.hold=Math.round(L.fish*(1-u));
+  /* 数字は「飛ばした数」ではなく「水揚げ場に着いた数」で動かす。
+     でないと札束が出るより先に金が増えて、因果が逆に見える */
+  const done=L.done/Math.max(1,L.n);
+  S.money=L.money0+Math.round(L.yen*done);
+  S.hold=Math.round(L.fish*(1-done));
   setTxt(elHaul, yen(S.money-L.money0));
   if(L.t>=HAUL.sec) finishLanding();
 }
 function updateParts2(dt){
+  const L=S.land;
   for(let i=S.parts2.length-1;i>=0;i--){
     const p=S.parts2[i]; p.t+=dt;
     if(p.ph===0){
-      p.vy+=HAUL.grav*dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.a+=p.av*dt;
-      if(p.t>=HAUL.flip){ p.ph=1; p.t=0; p.vx*=0.35; p.vy=-26; }
-    }else{
-      p.vy+=HAUL.grav*0.12*dt; p.x+=p.vx*dt; p.y+=p.vy*dt;
-      if(p.t>=HAUL.coinSec) S.parts2.splice(i,1);
+      const u=p.t/p.dur;
+      if(u>=1){                                  // 水揚げ場に着いた。札束になる
+        p.ph=1; p.t=0; p.x=p.x1; p.y=p.y1;
+        if(L) L.done++;
+        continue;
+      }
+      p.x=p.x0+(p.x1-p.x0)*u;
+      p.y=p.y0+(p.y1-p.y0)*u-4*p.arc*u*(1-u);    // 放物線
+      p.a+=p.av*dt;
+    }else if(p.t>=HAUL.noteSec){
+      S.parts2.splice(i,1);
     }
   }
 }
@@ -1927,21 +1942,21 @@ function drawLanding(){
   if(!S.parts2.length) return;
   const ox=OX, oy=OY, k=1/TAU*ANG;
   for(const p of S.parts2){
-    const x=Math.round(p.x+ox), y=Math.round(p.y+oy);
     if(p.ph===0){
+      const x=Math.round(p.x+ox), y=Math.round(p.y+oy);
       const ai=((Math.round(p.a*k)%ANG)+ANG)%ANG;
       ctx.drawImage(fishAtlas, ai*CELL, 3*CELL, CELL, CELL, (x-CELL/2)|0, (y-CELL/2)|0, CELL, CELL);
     }else{
-      const u=p.t/HAUL.coinSec;
-      if(u<0.16){                                   // 変わった瞬間の閃光
-        ctx.globalAlpha=1-u/0.16;
+      const u=p.t/HAUL.noteSec;
+      const x=Math.round(p.x+ox), y=Math.round(p.y+oy-HAUL.noteRise*Math.sqrt(u));
+      if(u<0.2){                                   // 変わった瞬間の閃光
+        ctx.globalAlpha=1-u/0.2;
         ctx.fillStyle='#fff6dd';
-        ctx.fillRect(x-5,y,11,1); ctx.fillRect(x,y-5,1,11);
+        ctx.fillRect(x-7,y+4,15,1); ctx.fillRect(x,y-3,1,15);
         ctx.globalAlpha=1;
       }
-      const f=coinCv[(Math.round(p.t*22)+p.d)&3];
-      ctx.globalAlpha=u>0.7?(1-u)/0.3:1;
-      ctx.drawImage(f, x-4, y-4);
+      ctx.globalAlpha=u>0.6?(1-u)/0.4:1;
+      ctx.drawImage(noteCv, x-6, y-4);
       ctx.globalAlpha=1;
     }
   }

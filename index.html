@@ -1166,11 +1166,11 @@ function netPower(){                       // 表示用の本/秒（1周期あ�
    3分のスコアアタックをやめ、漁 → 帰港 → 換金 → 投資 → 再出港のループにする。
    さわる数字はこのブロックに全部ある。バランスはここだけ見ればいい。 */
 const PORT={
-  x:0, y:0,            // 港の位置。ここが世界の原点で、東（+x）ほど良い漁場になる
-  r:190,               // この円に入ると入港が始まる
+  x:0, y:0,            // 島の位置。ここが世界の原点で、遠いほど良い漁場になる
   dock:{x:34, y:2},    // 船着場。着岸するとここへ吸い寄せられる
+  r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
-  out:230              // 出港でここまで離れたら操船を返す
+  out:110              // 出港で船着場からここまで離れたら操船を返す
 };
 /* 海の濃さは港からの距離の「指数」で増やす。上限のあるランプだと、タンクが
    その上限に届いた時点で一番おいしい漁場が動かなくなる。一定距離ごとに倍、
@@ -1696,8 +1696,11 @@ function openChest(){
 
 /* ================= 港と航海 ================= */
 /* SEA -> DOCKING -> PORT -> DEPARTING -> SEA。操船できるのは SEA のときだけ */
-function inPortArea(){ return portDist()<PORT.r; }
 function dockPos(){ return {x:PORT.x+PORT.dock.x, y:PORT.y+PORT.dock.y}; }
+/* 入港の判定は島の中心ではなく船着場から測る。島まるごとを円で囲うと、
+   岸に沿って走っているだけで操船を取り上げられてしまう */
+function dockDist(){ const d=dockPos(); return Math.hypot(S.boat.x-d.x, S.boat.y-d.y); }
+function inPortArea(){ return dockDist()<PORT.r; }
 
 function updateVoyage(dt){
   if(S.phase==='sea'){
@@ -1707,9 +1710,9 @@ function updateVoyage(dt){
     S.fuel-=sp*dt*FUEL.perPx*(1+FUEL.boostPenalty*over) + cruiseBurn*FUEL.idleRate*dt;
     if(S.fuel<=0){                       // 燃料切れ。沈めも殺しもせず、港へ戻して半値にする
       S.fuel=0; S.dry=true;
-      const d=Math.max(1,portDist());
-      S.boat.x=PORT.x+(S.boat.x-PORT.x)/d*(PORT.r-6);   // 港の縁まで曳かれてきた扱い
-      S.boat.y=PORT.y+(S.boat.y-PORT.y)/d*(PORT.r-6);
+      const dk=dockPos(), d=Math.max(1,dockDist());
+      S.boat.x=dk.x+(S.boat.x-dk.x)/d*(PORT.r-6);       // 船着場の手前まで曳かれてきた扱い
+      S.boat.y=dk.y+(S.boat.y-dk.y)/d*(PORT.r-6);
       S.boat.sp=0; S.boat.vx=0; S.boat.vy=0;
       beginDocking();
     }else if(inPortArea() && S.voyage>0) beginDocking();
@@ -1719,13 +1722,13 @@ function updateVoyage(dt){
     const B=S.boat;
     let tx,ty;
     if(S.phase==='docking'){ const d=dockPos(); tx=d.x; ty=d.y; }
-    else { tx=PORT.x+(PORT.out+40); ty=PORT.y; }
+    else { const dk=dockPos(); tx=dk.x+PORT.out+40; ty=dk.y; }
     const dx=tx-B.x, dy=ty-B.y, d=Math.hypot(dx,dy);
     const step=Math.min(d, PORT.approach*dt);
     if(d>0.001){ B.x+=dx/d*step; B.y+=dy/d*step; B.hd=Math.atan2(dy,dx); B.face=dx>0?1:-1; }
     B.sp=PORT.approach; B.vx=dx/(d||1)*B.sp; B.vy=dy/(d||1)*B.sp; B.bob+=dt*2.4; placeCrew();
     if(S.phase==='docking' && d<2.5){ B.sp=0; B.vx=0; B.vy=0; arrivePort(); }
-    if(S.phase==='departing' && portDist()>PORT.out){ B.sp=0; S.phase='sea'; }
+    if(S.phase==='departing' && dockDist()>PORT.out){ B.sp=0; S.phase='sea'; }
   }
 }
 function beginDocking(){
@@ -1903,8 +1906,8 @@ function drawPort(){
 /* 港の範囲。ここへ入ると操船を離れて入港が始まる */
 function drawPortRing(){
   if(S.phase==='port'||!portRing) return;
-  const B=S.boat, r=PORT.r;
-  const x=PORT.x-r-2+(VW/2-B.x), y=PORT.y-r-2+(VH/2-B.y);
+  const B=S.boat, r=PORT.r, dk=dockPos();
+  const x=dk.x-r-2+(VW/2-B.x), y=dk.y-r-2+(VH/2-B.y);
   if(x>VW||y>VH||x+portRing.width<0||y+portRing.height<0) return;
   ctx.drawImage(portRing, x|0, y|0);
 }

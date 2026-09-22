@@ -9,7 +9,7 @@
 <meta property="og:title" content="カツオ一本釣り / Fish On! ~Pole & Line">
 <meta property="og:description" content="マウスで進む向きだけを決める3分間のスコアアタック。魚群に船べりを寄せると漁師が自動で一本釣りする。">
 <meta property="og:type" content="website">
-<title>カツオ一本釣り</title>
+<title>カツオ島</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Reggae+One&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=M+PLUS+1+Code:wght@400;500;700&display=swap" rel="stylesheet">
@@ -304,7 +304,7 @@
         </div>
       </div>
 
-      <div class="lvbar">
+      <div class="lvbar" hidden>
         <div class="row"><span id="lvlabel">NEXT</span><span class="num" id="lvnum">0 / 9</span></div>
         <div class="track"><div class="fill" id="lvfill"></div></div>
       </div>
@@ -389,7 +389,7 @@ const GAME_TIME = 180;
 /* ================= 文言 ================= */
 const STR={
 ja:{
- 'title.h1a':'カツオ','title.h1b':'一本釣り','title.sub':'',
+ 'title.h1a':'カツオ','title.h1b':'島','title.sub':'',
  'title.tap':'動かして出港','title.best':'自己ベスト {n}本',
  'hud.time':'ノコリ','hud.catch':'ギョカク','hud.catchUnit':'本','hud.next':'NEXT',
  'hud.fever':'入れ食い','hud.round':'{n}連',
@@ -405,7 +405,7 @@ ja:{
  'pick.efHull':'{a}t → {b}t船',
  'unit.crew':'人','unit.rate':'本/秒','unit.knot':'ノット','unit.km':'km','unit.m':'m','unit.none':'なし',
  'chest.1':'宝箱','chest.3':'当たり','chest.5':'大当たり',
- 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}',
+ 'chest.item':'{name} 強化','chest.itemN':'{name} ×{n}','chest.fish':'{n}本',
  'res.head':'リョウ シュウリョウ','res.scoreUnit':'本',
  'rank.1':'見習い','rank.1.fl':'まだ竿が重い。',
  'rank.2':'一人前','rank.2.fl':'群れを見つける目はできた。',
@@ -419,7 +419,7 @@ ja:{
  'menu.gear':'漁法','gear.pole':'一本釣り','gear.seine':'巻き網','gear.trawl':'曳き網'
 },
 en:{
- 'title.h1a':'FISH','title.h1b':'ON!','title.sub':'~Pole & Line',
+ 'title.h1a':'KATSUO','title.h1b':'ISLE','title.sub':'',
  'title.tap':'Move to cast off','title.best':'BEST {n}',
  'hud.time':'TIME','hud.catch':'CATCH','hud.catchUnit':'','hud.next':'NEXT',
  'hud.fever':'ON FIRE','hud.round':'CHAIN {n}',
@@ -435,7 +435,7 @@ en:{
  'pick.efHull':'{a}t → {b}t boat',
  'unit.crew':'','unit.rate':'fish/s','unit.knot':'kn','unit.km':'km','unit.m':'m','unit.none':'none',
  'chest.1':'CHEST','chest.3':'GOOD HAUL','chest.5':'JACKPOT',
- 'chest.item':'{name} up','chest.itemN':'{name} ×{n}',
+ 'chest.item':'{name} up','chest.itemN':'{name} ×{n}','chest.fish':'{n} fish',
  'res.head':'TRIP END','res.scoreUnit':'fish',
  'rank.1':'Apprentice','rank.1.fl':'The pole still feels heavy.',
  'rank.2':'Deckhand','rank.2.fl':"You've got an eye for the schools now.",
@@ -861,8 +861,8 @@ const S={
   stick:{id:-1, on:false, ax:0, ay:0, tx:0, ty:0, f:0},
   dir:{x:0,y:0,t:1}, aim:{x:0,y:0}, menu:false,
   schools:[], chests:[], crew:[], parts:[], wake:[], rings:[], spray:[], flash:[], boil:[], boilAcc:0,
-  up:{crew:2,hull:1,rate:0,engine:0,sonar:1,lure:1},
-  seatX:[], seats:0, acc:1, chestT:26, sprayAcc:0, start:{crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1}, totalFish:0, choices:[], caught:0,
+  up:{crew:8,hull:1,rate:0,engine:0,sonar:1,lure:1},
+  seatX:[], seats:0, acc:1, chestT:26, sprayAcc:0, start:{crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1}, totalFish:0, choices:[], caught:0,
   rt:0, shake:0, freeze:0, pop:0, pops:[], burst:null, inRange:0,
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
@@ -1418,39 +1418,30 @@ function rollChoices(){
   while(out.length<3) out.push(UPG_BY.crew);
   return out;
 }
-function levelUp(){
-  S.prog-=S.need; S.level++;
-  S.need=Math.round(9*Math.pow(1.28,S.level-1));
-  S.mode='levelup';
-  S.choices=rollChoices();
-  bang('lv'); sfxLevel();
-  clearTimeout(levelUp._t);                      // 閃光を見せてからカードを開く
-  levelUp._t=setTimeout(()=>{ if(S.mode==='levelup') showCards(); }, 340);
-}
+/* run 中に強化は起きない。考えることは島に隔離してある（一本釣りとの一番の違い）。
+   呼び出し側の `if(S.prog>=S.need) levelUp()` はそのまま残し、ここで握り潰している */
+function levelUp(){ S.prog=0; }
 function applyUpgrade(u){ u.apply(); layoutCrew(); }
 function dropChest(){                            // 魚探を積んだ瞬間に1つ流れ着く
   // 画面の外（対角で275px）に出す。魚探に映らないと探しようがないので範囲内には収める
   const B=S.boat, a=rnd(0,TAU), d=Math.min(rnd(300,420), Math.max(300, stat.sonar()));
   S.chests.push({x:B.x+Math.cos(a)*d, y:B.y+Math.sin(a)*d, life:52, ph:rnd(0,TAU)});
 }
+/* 強化は島でしか買わないので、宝箱は積荷になる。
+   当たりの重みは一本釣りの 70/23/7% をそのまま流用した */
+const CHEST_FISH=[40,120,300];
 function openChest(){
-  const n = Math.random()<.70?1:(Math.random()<.73?3:5);
-  const got=[];
-  for(let i=0;i<n;i++){
-    const pool=UPG.filter(u=>u.lv()<u.max);
-    const u=pool.length?pick(pool):UPG_BY.crew;
-    u.apply(); got.push(t('up.'+u.id+'.name'));
-  }
-  layoutCrew(); bang('chest'); sfxChest();
-  const counts={};
-  got.forEach(g=>counts[g]=(counts[g]||0)+1);
-  toastEl.querySelector('.hd').textContent = t(n===5?'chest.5':(n===3?'chest.3':'chest.1'));
+  const r=Math.random(), i = r<.70?0:(r<.93?1:2);
+  const n=CHEST_FISH[i];
+  S.score+=n; S.prog+=n; S.pop=1;
+  bang('chest'); sfxChest();
+  toastEl.querySelector('.hd').textContent = t(i===2?'chest.5':(i===1?'chest.3':'chest.1'));
   toastItems.innerHTML='';
-  Object.keys(counts).forEach(k=>{
+  {
     const d=document.createElement('div'); d.className='it';
-    d.textContent = counts[k]>1 ? t('chest.itemN',{name:k,n:counts[k]}) : t('chest.item',{name:k});
+    d.textContent = t('chest.fish',{n:fmt(n)});
     toastItems.appendChild(d);
-  });
+  }
   toastEl.classList.add('on');
   clearTimeout(openChest._t);
   openChest._t=setTimeout(()=>toastEl.classList.remove('on'),2600);
@@ -2101,8 +2092,7 @@ function updateHUD(){
   setTxt(elTime, rem>10 ? Math.floor(rem/60)+':'+String(Math.floor(rem%60)).padStart(2,'0') : rem.toFixed(1));
   elClock.classList.toggle('warn', rem<=15);
   setTxt(elScore, fmt(S.score));
-  setTxt(elLvNum, S.prog+' / '+S.need);
-  elFill.style.width=clamp(S.prog/S.need*100,0,100)+'%';
+  /* 強化が run から消えたので、このバーは今なにも指していない（HTML側で畳んである） */
   UPG_IDS.forEach(id=>{
     const u=UPG_BY[id];
     const c=chipEls[u.id]; if(!c) return;
@@ -2174,8 +2164,8 @@ function reset(){
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
   trawlReset();
   S.fvT=0; S.fvRound=0; S.fvLock=0; S.fvPulse=0; S.fever=false; S.chain=0; S.inRange=0; S.pop=0; S.shake=0; S.freeze=0; S.burst=null;
-  S.up={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
-  S.start={crew:2,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  S.up={crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
+  S.start={crew:8,hull:1,rate:0,rods:0,engine:0,sonar:1,lure:1};
   Object.assign(S.boat,{x:0,y:0,vx:0,vy:0,hd:0,sp:0,face:1,bob:0});
   S.dir.x=0; S.dir.y=0; S.dir.t=1; S.menu=false;
   S.stick.id=-1; S.stick.on=false; S.stick.f=0;
@@ -2431,7 +2421,7 @@ function tick(now){
 
 /* ================= 言語の適用 ================= */
 function applyLang(){
-  document.title = LANG==='en' ? 'Fish On! ~Pole & Line' : 'カツオ一本釣り';
+  document.title = LANG==='en' ? 'Katsuo Isle' : 'カツオ島';
   const set=(id,k)=>{ const e=document.getElementById(id); if(e) e.textContent=t(k); };
   set('h1a','title.h1a'); set('h1b','title.h1b'); set('h1sub','title.sub');
   set('tapHint','title.tap'); set('retry','res.retry');

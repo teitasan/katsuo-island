@@ -1858,6 +1858,8 @@ const HAUL={
   fly:0.5,          // 船から水揚げ場まで飛ぶ秒数
   flyVar:0.22,      // 飛行時間のばらつき。揃いすぎると1本の線に見える
   arc:52,           // 放物線の高さ
+  fromX:0.40,       // 出る位置。船の長さに対する割合（船首と船尾いっぱいまでで0.5）
+  fromY:-3,         // 舷からの上下。B.y は喫水なので、舷の高さを引いてから足す
   spin:12,          // 飛んでいる間の回転
   noteSec:0.42,     // 札束が出てから消えるまで
   noteRise:24,      // 札束が浮き上がる高さ
@@ -1901,8 +1903,10 @@ function updateLanding(dt){
   L.sfxT-=dt;
   const mx=PORT.x+PORT.market.x, my=PORT.y+PORT.market.y;
   while(make-->0){
+    /* B.y は喫水線。そのまま使うと船底から湧いて見えるので、舷の高さまで上げる */
+    const deck=B.y-(b.waterY-b.railY)+HAUL.fromY;
     S.parts2.push({
-      x0:B.x+rnd(-b.len*0.44,b.len*0.44), y0:B.y+rnd(-3,3),
+      x0:B.x+rnd(-b.len*HAUL.fromX,b.len*HAUL.fromX), y0:deck+rnd(-2,2),
       x1:mx+rnd(-7,7), y1:my+rnd(-4,4),
       t:0, dur:HAUL.fly*rnd(1-HAUL.flyVar,1+HAUL.flyVar),
       arc:HAUL.arc*rnd(0.75,1.25),

@@ -1687,7 +1687,7 @@ function makeSchool(x,y,count){
 }
 /* ================= 鳥山（ナブラ） =================
    ときどき海のどこかに、鳥の群がる大群が短いあいだだけ湧く。
-   湧いた瞬間は必ず魚探に映る距離に出すので、見つけるのは魚探の仕事。
+   魚探の範囲より外に湧き、範囲外のあいだは魚探の縁に方角だけ出る。近づくと本体が映る。
    行くかどうかは燃料との相談で、間に合わなければ潜って消える。
    航海ごとに当たり外れを作るのが目的。入れ食いの仕組みには触っていない */
 const TORI={
@@ -1699,7 +1699,7 @@ const TORI={
   life:32,            // 湧いてから散りはじめるまで
   size:6,             // その場の普通の群れの何倍の魚か
   tight:0.72,         // 群れの半径の倍率。小さいほど密で、竿の下に魚が溜まる
-  near:0.45, far:0.9, // 湧く距離。魚探の半径に対する割合
+  dist:[350,650],     // 湧く距離（船から px）。魚探Lv1の半径250pxより外なので、魚探の縁に方角だけ出る
   gulls:24,           // 群がる鳥の数
   dive:2.6,           // 散りはじめてから潜りきるまで
   warn:8,             // 残りこの秒数になると魚探の目印が速く点滅する
@@ -1712,9 +1712,9 @@ function toriFlock(n){
   return out;
 }
 function spawnTori(){
-  const B=S.boat, R=stat.sonar();
+  const B=S.boat;
   for(let tries=0;tries<16;tries++){
-    const a=rnd(0,TAU), d=R*rnd(TORI.near,TORI.far);
+    const a=rnd(0,TAU), d=rnd(TORI.dist[0],TORI.dist[1]);
     const x=B.x+Math.cos(a)*d, y=B.y+Math.sin(a)*d;
     if(Math.hypot(x-PORT.x,y-PORT.y)<SEA.portClear+160) continue;   // 港の足元には出さない
     const rich=seaRichAt(x,y);
@@ -2982,12 +2982,25 @@ function drawRadar(){
   drawEchoes(g,C,R,k,B,sw);                   // 魚群の反応（実位置をセルに集計）
   for(const s of S.schools){                  // 鳥山。時間切れが近いほど速く点滅する
     const T=s.tori; if(!T || s.alive<=0 || T.age>=TORI.life) continue;
-    const x=C+(s.cx-B.x)*k, y=C+(s.cy-B.y)*k;
+    /* 範囲の外にいるあいだは縁に貼りつけて、外向きの矢印で方角だけ示す */
+    const dx=s.cx-B.x, dy=s.cy-B.y, dist=Math.hypot(dx,dy)||1, ux=dx/dist, uy=dy/dist;
+    const rim=R-W*0.07, inside=dist*k<=rim;
+    const x=C+ux*(inside?dist*k:rim), y=C+uy*(inside?dist*k:rim);
     const left=TORI.life-T.age, hz=left<TORI.warn?6:1.6;
     const on=(Math.sin(S.rt*TAU*hz)>-0.2);
-    const pr=((S.rt*0.9)%1);                      // 外へ広がる輪
-    g.strokeStyle='rgba(255,246,221,'+(0.7*(1-pr)).toFixed(2)+')'; g.lineWidth=2;
-    g.beginPath(); g.arc(x,y,8+pr*W*0.09,0,TAU); g.stroke();
+    if(inside){
+      const pr=((S.rt*0.9)%1);                    // 外へ広がる輪
+      g.strokeStyle='rgba(255,246,221,'+(0.7*(1-pr)).toFixed(2)+')'; g.lineWidth=2;
+      g.beginPath(); g.arc(x,y,8+pr*W*0.09,0,TAU); g.stroke();
+    }else{
+      const a=Math.atan2(uy,ux), L=W*0.05;         // 外向きの矢印
+      g.fillStyle='#fff6dd';
+      g.beginPath();
+      g.moveTo(x+Math.cos(a)*L*1.7, y+Math.sin(a)*L*1.7);
+      g.lineTo(x+Math.cos(a+2.4)*L, y+Math.sin(a+2.4)*L);
+      g.lineTo(x+Math.cos(a-2.4)*L, y+Math.sin(a-2.4)*L);
+      g.closePath(); g.fill();
+    }
     if(on){
       const sc=Math.max(2,Math.round(W/70));
       g.imageSmoothingEnabled=false;

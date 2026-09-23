@@ -17,3 +17,5 @@
 
 さわる数字は `ippon.html` 内の
 `PORT` / `SEA` / `FUEL` / `YEN` / `SHIPS` / `PRICE` / `TANK_STEP` に集めてある。
+
+遊ぶ: https://teitasan.github.io/katsuo-island/

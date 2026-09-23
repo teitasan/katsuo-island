@@ -1114,7 +1114,7 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
-  land:null, parts2:[],
+  land:null, parts2:[], toriT:20,
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
 const TONS=[9,19,49,119,199];
@@ -1320,11 +1320,12 @@ function ship(){ return SHIPS[S.shipIdx]; }
 function fuelMax(){ return Math.round(ship().fuel*(1+TANK_STEP*(S.up.tank||0))); }
 function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
 /* 濃さの倍率。1=近海、richCap=頭打ち */
-function seaRich(){
-  const d=portDist();
+function seaRichAt(x,y){
+  const d=Math.hypot(x-PORT.x, y-PORT.y);
   if(d<=SEA.near) return 1;
   return Math.min(SEA.richCap, Math.pow(2,(d-SEA.near)/SEA.double));
 }
+function seaRich(){ return seaRichAt(S.boat.x, S.boat.y); }
 /* 上の倍率を 0〜1 に直したもの。群れの数や密度など、青天井にしたくないものに使う */
 function seaT(){ return Math.log2(seaRich())/Math.log2(SEA.richCap); }
 function costOf(id){
@@ -1443,6 +1444,85 @@ function makeSchool(x,y,count){
   }
   s.fish.sort((p,q)=>q.dd-p.dd);
   return s;
+}
+/* ================= 鳥山（ナブラ） =================
+   ときどき海のどこかに、鳥の群がる大群が短いあいだだけ湧く。
+   湧いた瞬間は必ず魚探に映る距離に出すので、見つけるのは魚探の仕事。
+   行くかどうかは燃料との相談で、間に合わなければ潜って消える。
+   航海ごとに当たり外れを作るのが目的。入れ食いの仕組みには触っていない */
+const TORI={
+  first:[20,75],      // 出港してから最初に湧くまで（秒）。短い航海では湧かないこともある
+  every:[55,95],      // 次が湧くまでの間隔。航海中だけ数える
+  rate:3,             // 鳥山の上にいる間、漁師の手が何倍速くなるか。
+                      // 濃い群れを置くだけだと竿の速さで頭打ちになり、よそで獲れたぶんと
+                      // 入れ替わるだけで総数が増えなかった。ここが鳥山の「当たり」の本体
+  life:32,            // 湧いてから散りはじめるまで
+  size:6,             // その場の普通の群れの何倍の魚か
+  tight:0.72,         // 群れの半径の倍率。小さいほど密で、竿の下に魚が溜まる
+  near:0.45, far:0.9, // 湧く距離。魚探の半径に対する割合
+  gulls:24,           // 群がる鳥の数
+  dive:2.6,           // 散りはじめてから潜りきるまで
+  warn:8,             // 残りこの秒数になると魚探の目印が速く点滅する
+  boil:90             // 画面に入っているあいだ水面が跳ねる数（毎秒）
+};
+function toriFlock(n){
+  const out=[];
+  for(let i=0;i<n;i++) out.push({a:rnd(0,TAU), w:rnd(.35,.8)*(Math.random()<.5?-1:1),
+    r:rnd(0.35,1.35), ph:rnd(0,TAU), fs:rnd(7,11)});
+  return out;
+}
+function spawnTori(){
+  const B=S.boat, R=stat.sonar();
+  for(let tries=0;tries<16;tries++){
+    const a=rnd(0,TAU), d=R*rnd(TORI.near,TORI.far);
+    const x=B.x+Math.cos(a)*d, y=B.y+Math.sin(a)*d;
+    if(Math.hypot(x-PORT.x,y-PORT.y)<SEA.portClear+160) continue;   // 港の足元には出さない
+    const rich=seaRichAt(x,y);
+    const n=Math.round(100*rich*TORI.size*(1+TUNE.lureSchoolSize*(S.up.lure-1)));
+    const sc=makeSchool(x,y,n);
+    const p=Math.log2(rich)/Math.log2(SEA.richCap);
+    sc.rx*=(1-(1-SEA.tightMax)*p)*TORI.tight; sc.ry*=(1-(1-SEA.tightMax)*p)*TORI.tight;
+    sc.gulls=toriFlock(TORI.gulls);
+    sc.tori={age:0};
+    S.schools.push(sc); S.totalFish+=n;
+    tone(1568,.07,'square',.04,1.18); tone(1318,.09,'square',.035,1.12,.09);   // 鳥が鳴く
+    return sc;
+  }
+  return null;
+}
+function updateTori(dt){
+  if(S.phase==='sea'){
+    S.toriT-=dt;
+    if(S.toriT<=0){ spawnTori(); S.toriT=rnd(TORI.every[0],TORI.every[1]); }
+  }
+  for(const s of S.schools){
+    const T=s.tori; if(!T) continue;
+    T.age+=dt;
+    if(T.age<TORI.life || s.alive<=0) continue;
+    /* 時間切れ。群れが潜っていく。残りを均して dive 秒で消し、潜ったところに輪を出す */
+    if(T.left===undefined) T.left=s.alive;
+    let k=Math.ceil(T.left*dt/TORI.dive);
+    for(let i=s.fish.length-1;i>=0 && k>0;i--){
+      const f=s.fish[i]; if(!f.alive) continue;
+      f.alive=false; s.alive--; S.totalFish--; k--;
+      if(S.rings.length<120 && Math.random()<.35) S.rings.push({x:f.wx, y:f.wy, t:0});
+    }
+  }
+  spawnToriBoil(dt);
+}
+/* 鳥山は入れ食いでなくても水面が沸いている。見つけたときに「あれだ」と分かるように */
+function spawnToriBoil(dt){
+  for(const s of S.schools){
+    if(!s.tori || s.alive<=0 || s.tori.age>=TORI.life) continue;
+    if(Math.abs(s.cx-camX)>VW/2+s.rx || Math.abs(s.cy-camY)>VH/2+s.rx) continue;
+    s.tori.acc=(s.tori.acc||0)+dt*(REDUCE?TORI.boil*0.3:TORI.boil);
+    let n=s.tori.acc|0; s.tori.acc-=n;
+    const fs=s.fish;
+    while(n-->0 && S.boil.length<BOIL_MAX){
+      const f=fs[rint(0,fs.length-1)]; if(!f.alive) continue;
+      S.boil.push({x:f.wx+rnd(-2,2), y:f.wy+rnd(-1,1), t:0, life:rnd(.26,.42), k:rnd(.7,1.25), d:Math.random()<.5?1:-1});
+    }
+  }
 }
 function manageWorld(dt){
   const B=S.boat, rich=seaRich(), p=seaT();   // 時間ではなく港からの距離。遠いほど濃い海になる
@@ -1680,17 +1760,19 @@ function updateFishing(dt){
   if(S.gear==='seine') return updateNet(dt);
   if(S.gear==='trawl') return updateTrawl(dt);
   const B=S.boat, rx=stat.rx(), ry=stat.ry(), eff=navEff();
-  const base=BARE*(S.acc||1)*(S.fever?FV_RATE:1)*eff;
   const up=[], dn=[];
+  let onTori=false;                              // 竿の下に鳥山の魚がいるか
   for(const s of S.schools){
     if(Math.abs(s.cx-B.x)>rx+s.rx*s.k+14 || Math.abs(s.cy-B.y)>ry+s.rx*s.k+14) continue;
-    const fs=s.fish;
+    const fs=s.fish, live=s.tori && s.tori.age<TORI.life;
     for(let i=0;i<fs.length;i++){
       const f=fs[i]; if(!f.alive) continue;
       const ex=(f.wx-B.x)/rx, ey=(f.wy-B.y)/ry;
-      if(ex*ex+ey*ey<=1) (f.wy<B.y?up:dn).push({f,s});
+      if(ex*ex+ey*ey<=1){ (f.wy<B.y?up:dn).push({f,s}); if(live) onTori=true; }
     }
   }
+  S.onTori=onTori;
+  const base=BARE*(S.acc||1)*(S.fever?FV_RATE:1)*eff*(onTori?TORI.rate:1);
   S.inRange=up.length+dn.length;                // 竿の下に今いる魚。入れ食いの判定に使う
   if(eff<=0.001) return;                        // 飛ばしすぎ。竿は上がっている
   for(const fm of S.crew){
@@ -1970,6 +2052,7 @@ function departPort(){
   hidePort();
   S.voyage++;
   S.phase='departing';
+  S.toriT=rnd(TORI.first[0],TORI.first[1]);
   S.landed=null;
   audioInit();
   saveGame();
@@ -2626,6 +2709,20 @@ function drawRadar(){
   g.strokeStyle='rgba(234,243,244,.22)';      // 画面範囲
   g.strokeRect(C-VW/2*k, C-VH/2*k, VW*k, VH*k);
   drawEchoes(g,C,R,k,B,sw);                   // 魚群の反応（実位置をセルに集計）
+  for(const s of S.schools){                  // 鳥山。時間切れが近いほど速く点滅する
+    const T=s.tori; if(!T || s.alive<=0 || T.age>=TORI.life) continue;
+    const x=C+(s.cx-B.x)*k, y=C+(s.cy-B.y)*k;
+    const left=TORI.life-T.age, hz=left<TORI.warn?6:1.6;
+    const on=(Math.sin(S.rt*TAU*hz)>-0.2);
+    const pr=((S.rt*0.9)%1);                      // 外へ広がる輪
+    g.strokeStyle='rgba(255,246,221,'+(0.7*(1-pr)).toFixed(2)+')'; g.lineWidth=2;
+    g.beginPath(); g.arc(x,y,8+pr*W*0.09,0,TAU); g.stroke();
+    if(on){
+      const sc=Math.max(2,Math.round(W/70));
+      g.imageSmoothingEnabled=false;
+      g.drawImage(gullAtlas, 2*GCELL, 0, GCELL, GCELL, Math.round(x-GCELL*sc/2), Math.round(y-GCELL*sc/2), GCELL*sc, GCELL*sc);
+    }
+  }
   {                                           // 港は錨ひとつで示す。陸を塗ると魚の反応が読みにくい
     const d=dockPos(), x=C+(d.x-B.x)*k, y=C+(d.y-B.y)*k;
     if(x>-8 && x<W+8 && y>-8 && y<W+8 && anchorCv){
@@ -3149,6 +3246,7 @@ function tick(now){
     manageWorld(dt); updateSchools(dt);
     updateVoyage(dt);
     updateCam(dt);
+    updateTori(dt);
     if(S.phase==='landing') updateLanding(dt);
     if(S.parts2.length) updateParts2(dt);
     if(S.started && S.phase==='sea'){ updateFishing(dt); updateFever(dt); }

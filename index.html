@@ -680,6 +680,122 @@ function buildBoat(lv){
   return {cv:c,W,H,railY,waterY,seatX,len};
 }
 
+/* ---------------- 船の絵を足す ----------------
+   性能の差は乗員上限だけ（どんな船だったかは気にしない）。
+   長さは釣り座の数で決まる。釣り座は SEAT_GAP ごとに両舷へ並ぶ */
+function hullMask(g,x0,x1,railY,waterY,shape){      // 船体の輪郭を黒で塗り、上下の縁を返す
+  const top=[], bot=[];
+  for(let x=x0;x<=x1;x++){
+    const r=shape(x); let t=railY+r.t, b=waterY+r.b;
+    if(b<=t) b=t+1;
+    top[x]=t; bot[x]=b; px(g,x,t,1,b-t,'#000');
+  }
+  return {top,bot};
+}
+function seatsOf(x0,x1){ const a=[]; for(let x=x0+13; x<=x1-14; x+=SEAT_GAP) a.push(x); return a; }
+function hline(g,xa,ya,xb,yb,col){                  // 長い張り線用（line は200pxで打ち切る）
+  const n=Math.max(Math.abs(xb-xa),Math.abs(yb-ya))|0;
+  for(let i=0;i<=n;i++) px(g,Math.round(xa+(xb-xa)*i/n),Math.round(ya+(yb-ya)*i/n),1,1,col);
+}
+
+/* 木造の小舟。板張りで両端が反り上がる */
+function buildRowboat(){
+  const len=52, W=len+14, H=46, railY=26, waterY=36;
+  const c=mkc(W,H), g=gx(c), x0=5, x1=W-5;
+  const {top,bot}=hullMask(g,x0,x1,railY,waterY,x=>{
+    const u=(x-x0)/(x1-x0), e=Math.min((x-x0)/6,(x1-x)/6,1);
+    return {t:-Math.round(5*Math.pow(Math.abs(u-0.5)*2,2.2)), b:3-Math.round((1-e)*7)};
+  });
+  g.globalCompositeOperation='source-atop';
+  px(g,0,0,W,H,'#8a5a2e');
+  for(let y=railY+2;y<H;y+=3) px(g,0,y,W,1,'#6e4522');   // 板の継ぎ目
+  px(g,0,waterY,W,H,'#4a2f18');
+  g.globalCompositeOperation='source-over';
+  for(let x=x0;x<=x1;x++){ px(g,x,top[x],1,1,'#c28a52'); px(g,x,top[x]+1,1,1,'#5a3a1c'); px(g,x,bot[x]-1,1,1,'#2b1a0b'); }
+  line(g,x0+9,railY,x0+2,waterY+3,'#a07448');             // 櫂
+  px(g,x0+4,railY-13,1,13,'#8a6a3f');                     // 船尾の旗竿
+  px(g,x0+5,railY-13,5,3,'#d8322a'); px(g,x0+5,railY-10,4,2,'#f2b32c');
+  return {cv:c,W,H,railY,waterY,seatX:seatsOf(x0,x1),len, flag:{x:x0+4, y:railY-14}};
+}
+
+/* タイタニック。黒い外板、白い上部構造、バフ色の煙突4本 */
+function buildTitanic(){
+  const len=220, W=len+14, H=84, railY=56, waterY=70;
+  const c=mkc(W,H), g=gx(c), x0=5, x1=W-5;
+  const {top,bot}=hullMask(g,x0,x1,railY,waterY,x=>{
+    const fb=(x-(x1-24))/24, e=Math.min((x-x0)/8,(x1-x)/5,1);
+    return {t:fb>0?-Math.round(3*fb*fb):0, b:4-Math.round((1-e)*8)};
+  });
+  g.globalCompositeOperation='source-atop';
+  px(g,0,0,W,H,'#1a1a1e');
+  px(g,0,railY+3,W,1,'#d9b24a');                          // 金の帯
+  px(g,0,waterY-1,W,H,'#9c2a22');                         // 喫水下の赤
+  g.globalCompositeOperation='source-over';
+  for(let x=x0;x<=x1;x++) px(g,x,top[x],1,1,'#e9e4d8');
+  for(let x=x0+10;x<x1-10;x+=4) px(g,x,railY+6,1,1,'#e8d9a0');   // 丸窓
+  for(let x=x0+12;x<x1-14;x+=4) px(g,x,railY+9,1,1,'#b8a870');
+  const sx0=x0+30, sx1=x1-44;
+  px(g,sx0,railY-8,sx1-sx0,8,'#f2efe6'); px(g,sx0,railY-8,sx1-sx0,1,'#fffdf5');
+  for(let x=sx0+2;x<sx1-2;x+=3) px(g,x,railY-5,2,2,'#2a3a48');
+  px(g,sx0+8,railY-14,sx1-sx0-16,6,'#ebe7dc');
+  for(let x=sx0+10;x<sx1-10;x+=3) px(g,x,railY-12,2,2,'#2a3a48');
+  for(let x=sx0+10;x<sx1-12;x+=14) px(g,x,railY-16,8,2,'#f6f3ea');  // 救命ボート
+  const fw=9, fh=26, span=sx1-sx0-24;
+  for(let i=0;i<4;i++){                                   // 煙突。上ほど艫へ傾ける
+    const fx=sx0+12+Math.round(span*i/3);
+    for(let y=0;y<fh;y++){
+      const lean=Math.round(y*0.18), yy=railY-14-y;
+      px(g,fx-lean,yy,fw,1, y>fh-5?'#141414':'#d99a3a');
+      if(y<=fh-5) px(g,fx-lean,yy,1,1,'#b07a26');
+    }
+  }
+  const m1=x1-22, m2=x0+18;                               // マストと張り線
+  px(g,m1,railY-40,1,40,'#6b5a44'); px(g,m2,railY-36,1,36,'#6b5a44');
+  hline(g,m2,railY-36,m1,railY-40,'#8a8070');
+  return {cv:c,W,H,railY,waterY,seatX:seatsOf(x0,x1),len, flag:{x:m2, y:railY-46}};
+}
+
+/* 戦艦大和。主砲塔3基（前2・後1）、塔型の艦橋、傾いた煙突 */
+function buildYamato(){
+  const len=300, W=len+14, H=84, railY=58, waterY=70;
+  const c=mkc(W,H), g=gx(c), x0=5, x1=W-5;
+  const {top,bot}=hullMask(g,x0,x1,railY,waterY,x=>{
+    const fb=(x-(x1-60))/60, fs=((x0+14)-x)/14, e=Math.min((x-x0)/6,(x1-x)/10,1);
+    return {t:(fb>0?-Math.round(5*fb*fb):0)+(fs>0?Math.round(fs):0), b:4-Math.round((1-e)*8)};
+  });
+  g.globalCompositeOperation='source-atop';
+  px(g,0,0,W,H,'#7c858c');
+  px(g,0,railY+2,W,1,'#6a737a');
+  px(g,0,waterY-1,W,H,'#6b2a26');
+  g.globalCompositeOperation='source-over';
+  for(let x=x0;x<=x1;x++){ px(g,x,top[x],1,1,'#a4adb3'); px(g,x,bot[x]-1,1,1,'#2e1412'); }
+  px(g,x1-5,top[x1-5]+2,2,2,'#e8c24a');                  // 艦首の金
+  const G='#8b949b', GD='#5f676d', GL='#aab3b9', BAR='#4c5358';
+  function turret(cx,lift,facing){
+    const tw=22, th=8, ty=railY-th-lift;
+    if(lift) px(g,cx-tw/2+3,ty+th,tw-6,lift,GD);          // 背負い式の台
+    px(g,cx-tw/2,ty,tw,th,G); px(g,cx-tw/2,ty,tw,1,GL); px(g,cx-tw/2,ty+th-1,tw,1,GD);
+    for(let i=0;i<3;i++){
+      const by=ty+2+i*2;
+      if(facing>0) px(g,cx+tw/2,by,18,1,BAR); else px(g,cx-tw/2-18,by,18,1,BAR);
+    }
+  }
+  turret(x1-78,0,1); turret(x1-108,5,1); turret(x0+56,0,-1);
+  const bx=x1-150;                                        // 艦橋
+  let y=railY;
+  for(const [w,h] of [[26,6],[22,6],[18,6],[14,6],[10,5],[8,5]]){
+    y-=h; px(g,bx-w/2,y,w,h,G); px(g,bx-w/2,y,w,1,GL);
+    for(let x=bx-w/2+2;x<bx+w/2-2;x+=3) px(g,x,y+2,1,1,'#2a3036');
+  }
+  px(g,bx-7,y-3,14,2,BAR); px(g,bx,y-12,1,9,BAR);        // 測距儀とマスト
+  const fx=bx-38;                                         // 煙突
+  px(g,fx-4,railY-6,16,6,G);
+  for(let yy=0;yy<22;yy++){ const lean=Math.round(yy*0.35); px(g,fx-lean,railY-6-yy,12,1, yy>18?'#2a2e32':G); }
+  px(g,x0+86,railY-26,1,26,BAR); px(g,x0+80,railY-22,13,1,BAR);   // 後檣
+  for(const ax of [bx+22,bx-60,bx-80]){ px(g,ax-4,railY-4,8,4,G); px(g,ax+4,railY-3,6,1,BAR); }  // 副砲
+  return {cv:c,W,H,railY,waterY,seatX:seatsOf(x0,x1),len, flag:{x:bx, y:y-22}};
+}
+
 /* ---------------- 漁師（2頭身・下半身なし・竿と糸を一体化） ---------------- */
 const FPAL=[
   {shirt:'#22536f',shirt2:'#173c53',hat:'#d9b160',skin:'#e2a878',band:null},
@@ -1266,6 +1382,8 @@ const PORT={
   r:60,                // 桟橋まわり。船着場からこの距離に入ると入港が始まる
   approach:64,         // 着岸・出港の自動移動の速さ(px/s)
   out:110,             // 出港で船着場からここまで離れたら操船を返す
+  berth:72,           // 半分の長さがこれを超える船は、そのぶん東へずらして着ける
+  viewRight:160,      // 着けた船の船首がここより東へ出たら、港のカメラもそのぶん寄せる
   view:{x:-70, y:-10}, // 入港中のカメラの中心（世界座標）。島と舫った船が両方入る位置
   market:{x:-40, y:-6} // 水揚げ場。漁協の前。魚はここへ向かって飛ぶ
 };
@@ -1298,11 +1416,15 @@ const FUEL={
 const YEN=50;          // カツオ1本の値段
 /* 船。art は既存の船体グラフィック(1〜5)のどれを使うか。
    seats は乗員上限で、その船に描かれている釣り座の数を超えては置けない */
-/* fuel は航続距離(px)。M_PER_PX=2 なので 4000px = 8km */
+/* 船。見た目は馬鹿でも、ゲームとしての違いは乗員上限。
+   art は絵の番号、lv は速さと旋回に使う格（これまでの3隻の値をそのまま保っている）。
+   fuel は航続距離(px)。M_PER_PX=2 なので 4000px = 8km */
 const SHIPS=[
-  {id:'small',  art:1, seats:8,  fuel:4000,  price:0},
-  {id:'medium', art:3, seats:18, fuel:9000,  price:80000},
-  {id:'large',  art:5, seats:32, fuel:18000, price:700000}
+  {id:'boat',    art:6, lv:1, seats:8,  fuel:4000,  price:0},
+  {id:'fisher',  art:3, lv:3, seats:18, fuel:9000,  price:80000},
+  {id:'big',     art:5, lv:5, seats:32, fuel:18000, price:700000},
+  {id:'titanic', art:7, lv:6, seats:50, fuel:30000, price:5000000},
+  {id:'yamato',  art:8, lv:7, seats:70, fuel:45000, price:30000000}
 ];
 /* 港での値段。n 段目の値段 = base * mul^n */
 const PRICE={
@@ -1341,8 +1463,8 @@ function canBuy(id){
 
 const stat = {
   rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
-  speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1+0.045*(u.hull-1));},
-  turn:(u)=>{u=u||S.up; return 5.0*Math.pow(1.10,u.engine)*(1-0.03*(u.hull-1));},
+  speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1+0.045*(ship().lv-1));},   // 絵の番号ではなく船の格
+  turn:(u)=>{u=u||S.up; return 5.0*Math.pow(1.10,u.engine)*(1-0.03*(ship().lv-1));},
   sonar:(u)=>250*Math.pow(1.32,(u||S.up).sonar-1),
   lureR:(u)=>{u=u||S.up; return u.lure===0?0:150+70*u.lure;},
   lureF:()=>S.up.lure*3.4,
@@ -1399,6 +1521,8 @@ function saveGear(v){ try{localStorage.setItem('ippon.gear',v);}catch(e){} }
 function initAssets(){
   buildFishAtlas(); buildSea(); buildChest(); buildGull(); buildPop(); buildFlag(); buildPortRing(); buildAnchor(); buildNote();
   for(let lv=1;lv<=5;lv++) boats.push(buildBoat(lv));
+  /* 6=木造の小舟 7=タイタニック 8=戦艦大和。SHIPS の art がこの番号を指す */
+  for(const b of [buildRowboat(), buildTitanic(), buildYamato()]){ boats.push(b); HULL_LEN.push(b.len); }
   for(let r=0;r<2;r++){ fishers[r]=[[],[]]; netters[r]=[[],[]];
     for(let p=0;p<2;p++) for(let i=0;i<3;i++){
       fishers[r][p][i]=buildFisher(i,r,p);
@@ -1878,7 +2002,14 @@ function openChest(){
 
 /* ================= 港と航海 ================= */
 /* SEA -> DOCKING -> PORT -> DEPARTING -> SEA。操船できるのは SEA のときだけ */
-function dockPos(){ return {x:PORT.x+PORT.dock.x, y:PORT.y+PORT.dock.y}; }
+function dockPos(){
+  const len=HULL_LEN[S.up.hull-1]||52, shift=Math.max(0, len/2-PORT.berth);
+  return {x:PORT.x+PORT.dock.x+shift, y:PORT.y+PORT.dock.y};
+}
+function portView(){
+  const d=dockPos(), bow=d.x+(HULL_LEN[S.up.hull-1]||52)/2;
+  return {x:PORT.x+PORT.view.x+Math.max(0,bow-PORT.viewRight), y:PORT.y+PORT.view.y};
+}
 /* 入港の判定は島の中心ではなく船着場から測る。島まるごとを円で囲うと、
    岸に沿って走っているだけで操船を取り上げられてしまう */
 function dockDist(){ const d=dockPos(); return Math.hypot(S.boat.x-d.x, S.boat.y-d.y); }
@@ -1924,7 +2055,8 @@ function updateCam(dt){
 }
 function camPos(){
   const B=S.boat, k=S.camK;
-  return {x:B.x+(PORT.x+PORT.view.x-B.x)*k, y:B.y+(PORT.y+PORT.view.y-B.y)*k};
+  const v=portView();
+  return {x:B.x+(v.x-B.x)*k, y:B.y+(v.y-B.y)*k};
 }
 function beginDocking(){
   S.phase='docking';
@@ -2369,7 +2501,10 @@ function drawBoat(){
   for(const fm of S.crew) if(fm.row===1) drawFisher(fm);
   ctx.drawImage(b.cv, -Math.round(b.W/2), -b.waterY);
   for(const fm of S.crew) if(fm.row===0) drawFisher(fm);
-  if(S.fever) ctx.drawImage(flagCv[(S.rt*11|0)&3], -Math.round(b.W/2)+9, -b.waterY+1);   // 船室の上で振る
+  if(S.fever){                                   // 船室の上で振る。背の高い船は船ごとの位置に立てる
+    const fl=b.flag||{x:9,y:1};
+    ctx.drawImage(flagCv[(S.rt*11|0)&3], -Math.round(b.W/2)+fl.x, -b.waterY+fl.y);
+  }
   ctx.restore();
   const spd=Math.hypot(B.vx,B.vy);
   if(spd>6){                                   // 船首の白波
@@ -3016,7 +3151,7 @@ function sfxEnd(){ tone(196,1.4,'sawtooth',.10,.7); tone(147,1.6,'sine',.08,.75,
 const elPort=document.getElementById('port'), elPMoney=document.getElementById('pmoney');
 const elPShop=document.getElementById('pshop'), elPLog=document.getElementById('plog');
 let shopOpen=null, hoverSpot=null;
-const SHIP_NAME=['小型一本釣り船','中型一本釣り船','大型一本釣り船'];
+const SHIP_NAME=['木造の小舟','漁船','大型漁船','タイタニック','戦艦大和'];
 const elPTip=document.getElementById('ptip');
 /* 押せる建物。矩形は buildPort のスプライト座標。絵を動かしたらここも動かす */
 const SPOTS=[

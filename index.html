@@ -352,7 +352,7 @@
       <div class="topbar">
         <div class="clock" id="clock">
           <span class="k" id="lblTime">ネンリョウ</span>
-          <span class="fuel"><i id="fuelfill"></i><u id="fuelhome"></u></span>
+          <span class="fuel"><i id="fuelfill"></i></span>
         </div>
         <div class="catch">
           <span class="k" id="lblCatch">ツミニ</span>
@@ -414,6 +414,7 @@
       <div class="box">
         <div class="mhd" id="lblMenu">キュウケイ</div>
         <div class="mrow">
+          <button class="mbtn" id="mHome">港へ戻る</button>
           <button class="mbtn" id="mSound">音<b id="mSoundV">ON</b></button>
           <button class="mbtn" id="mClose">閉じる</button>
         </div>
@@ -462,6 +463,7 @@ ja:{
  'up.engine.name':'機関','up.engine.short':'機関','up.engine.fl':'船の移動速度が上がる',
  'up.sonar.name':'魚群探知機','up.sonar.short':'魚探','up.sonar.fl':'ミニマップに<br>映る範囲が広がる',
  'up.tank.name':'燃料タンク','up.tank.short':'燃料','up.tank.fl':'最大燃料が増える<br>遠くまで行って帰れる',
+ 'up.fish.name':'水産加工場','up.fish.short':'売値','up.fish.fl':'カツオを高く売る',
  'up.lure.name':'集魚装置','up.lure.short':'集魚','up.lure.fl':'魚群が船に寄ってくる<br>入れ食いの時間が長くなる',
  'pick.lvCrew':'漁師 +3人','pick.lv':'Lv{a} → Lv{b}',
  'pick.efCrew':'うち待機 {a}人　釣り座 {b}人','pick.efBerth':'釣り座 {b}人',
@@ -493,6 +495,7 @@ en:{
  'up.engine.name':'Engine','up.engine.short':'Engine','up.engine.fl':'The boat moves faster',
  'up.sonar.name':'Sonar','up.sonar.short':'Sonar','up.sonar.fl':'A wider scope on the minimap',
  'up.tank.name':'Fuel Tank','up.tank.short':'Fuel','up.tank.fl':'More fuel<br>Go further and still get home',
+ 'up.fish.name':'Cannery','up.fish.short':'Price','up.fish.fl':'Fish sell for more',
  'up.lure.name':'Chum Rig','up.lure.short':'Chum','up.lure.fl':'Schools come to the boat<br>Runs on fire last longer',
  'pick.lvCrew':'+3 crew','pick.lv':'Lv{a} → Lv{b}',
  'pick.efCrew':'{a} standing by · {b} berths','pick.efBerth':'{b} berths',
@@ -1002,82 +1005,173 @@ function buildAnchor(){
 /* ---------------- 港 ---------------- */
 /* 世界の原点に置く陸と桟橋。船は東（+x）側から入ってくるので、陸は西側に寄せる */
 let portCv=null;
-const PORT_W=260, PORT_H=200;
+const PORT_W=300, PORT_H=240;
+const PORT_LANDW=190;             // 陸の幅。桟橋はこの東端から出る（桟橋の世界座標は変わらない）
+/* 施設の区画（スプライト座標）。絵も押せる範囲もここを使う */
+const PLOT={
+  gear:  {sx:8,   sy:34,  sw:50, sh:48},
+  engine:{sx:64,  sy:34,  sw:52, sh:48},
+  tank:  {sx:118, sy:30,  sw:44, sh:56},
+  fish:  {sx:8,   sy:150, sw:62, sh:50},
+  ship:  {sx:96,  sy:146, sw:62, sh:46}
+};
+/* 家を建てられる場所。港に近いところから埋まっていく */
+const HOUSE_SLOTS=(()=>{
+  const a=[];
+  for(const y of [88,102]) for(let x=8;x<=154;x+=12) a.push([x,y]);
+  for(let x=8;x<=150;x+=12) a.push([x,128]);
+  for(const y of [150,162,174,186]) a.push([76,y]);
+  a.sort((p,q)=>Math.hypot(p[0]-PORT_LANDW,p[1]-PORT_H/2)-Math.hypot(q[0]-PORT_LANDW,q[1]-PORT_H/2));
+  return a;
+})();
+const HOUSE_PER=2;                // 住民この人数につき家1軒
+/* 島は施設を上げるたびに描き直す。模様が毎回変わらないよう乱数は固定の種から引く */
+function seeded(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 function buildPort(){
-  const c=mkc(PORT_W,PORT_H), g=gx(c);
-  const gw=150, ty=26, by=PORT_H-26;                     // 陸の張り出しと、上下の汀線
-  /* 陸は海に浮いた灰色の板に見えやすい。土 → 草 → 磯 → 波打ち際、と
-     内側から外へ層を重ねて、水との境目を作る */
-  px(g,0,ty,gw,by-ty,'#6d6250');                          // 土
-  for(let i=0;i<220;i++){ const x=rint(0,gw-2), y=rint(ty+2,by-2);
-    px(g,x,y,rint(1,3),1, Math.random()<.5?'#786c58':'#625746'); }
-  px(g,0,ty+6,gw-26,by-ty-12,'#4a6b3a');                  // 草地
-  for(let i=0;i<150;i++){ const x=rint(0,gw-28), y=rint(ty+7,by-8);
-    px(g,x,y,rint(1,3),1, Math.random()<.5?'#568049':'#3f5c33'); }
-  // 磯（岩肌）。上下の縁を不揃いにして直線を殺す
-  for(let x=0;x<gw;x++){
+  const c=mkc(PORT_W,PORT_H), g=gx(c), R=seeded(20260923);
+  const ri=(a,b)=>a+Math.floor(R()*(b-a+1));
+  const gw=PORT_LANDW, ty=26, by=PORT_H-26;
+  /* 土 → 草 → 磯 → 波打ち際、と内側から外へ層を重ねて水との境目を作る */
+  px(g,0,ty,gw,by-ty,'#6d6250');
+  for(let i=0;i<340;i++) px(g,ri(0,gw-2),ri(ty+2,by-2),ri(1,3),1, R()<.5?'#786c58':'#625746');
+  px(g,6,ty+6,gw-32,by-ty-12,'#4a6b3a');
+  for(let i=0;i<260;i++) px(g,ri(6,gw-30),ri(ty+7,by-8),ri(1,3),1, R()<.5?'#568049':'#3f5c33');
+  for(let x=0;x<gw;x++){                                   // 南北の磯
     const t2=ty-1-((Math.sin(x*0.31)+Math.sin(x*0.13))*1.6|0);
     const b2=by+1+((Math.sin(x*0.27+2)+Math.sin(x*0.11))*1.6|0);
     px(g,x,t2,1,ty-t2+2,'#5a5344'); px(g,x,b2-2,1,b2-by+2,'#5a5344');
     px(g,x,t2,1,1,'#7b7361'); px(g,x,b2,1,1,'#3c372c');
-    if(Math.random()<.3){ px(g,x,t2-1,1,1,'#eaf3f4'); }   // 砕けた波
-    if(Math.random()<.3){ px(g,x,b2+1,1,1,'#eaf3f4'); }
+    if(R()<.3) px(g,x,t2-1,1,1,'#eaf3f4');
+    if(R()<.3) px(g,x,b2+1,1,1,'#eaf3f4');
   }
-  // 岸壁（桟橋の付け根まわりだけコンクリート）
+  for(let y=ty-2;y<by+3;y++){                              // 西の磯
+    const w=2+((Math.sin(y*0.29)+Math.sin(y*0.12))*1.3|0);
+    px(g,0,y,Math.max(1,w),1,'#5a5344'); px(g,Math.max(1,w),y,1,1,'#7b7361');
+  }
+  // 岸壁と係船柱
   const qy=PORT_H/2-30, qh=60;
-  px(g,gw-30,qy,30,qh,'#6f6a5e');
-  px(g,gw-30,qy,30,2,'#8d8779');
-  px(g,gw-30,qy+qh-2,30,2,'#4c4840');
+  px(g,gw-30,qy,30,qh,'#6f6a5e'); px(g,gw-30,qy,30,2,'#8d8779'); px(g,gw-30,qy+qh-2,30,2,'#4c4840');
   px(g,gw-3,qy,3,qh,'#3c3932');
   for(let y=qy+8;y<qy+qh-8;y+=18){ px(g,gw-8,y,5,6,'#2f2c26'); px(g,gw-7,y,3,1,'#57534a'); }
-  // 浜へ下りる道
-  px(g,40,PORT_H/2-4,gw-70,8,'#8a7c62');
-  px(g,40,PORT_H/2-4,gw-70,1,'#9d8e72');
-  // 倉庫（波板）
-  const wh=[[16,48,48,34,'#9c4a33','#7a3726'],[76,118,54,38,'#3f6d86','#2d5266']];
-  for(const [bx,by,bw,bh,col,col2] of wh){
-    px(g,bx,by,bw,bh,col);
-    px(g,bx,by,bw,3,col2);
-    px(g,bx,by+bh-3,bw,3,col2);
-    for(let x=bx+2;x<bx+bw-1;x+=4) px(g,x,by+3,1,bh-6,col2);
-    px(g,bx+bw/2-5,by+bh-14,10,14,'#2a2620');            // 扉
-    px(g,bx-2,by-3,bw+4,3,'#d6d0c2');                    // 庇
-  }
-  /* 造船所の船台。青い小屋の南から浜へ下ろして、建造中の船体を載せる。
-     これが無いと倉庫と見分けがつかない */
-  {
-    const bx=76, bw=54, y0=118+38;
-    for(let x=bx+8;x<bx+bw-8;x++) px(g,x,y0,1,20,'#6b4a28');
-    for(let y=y0;y<y0+20;y+=4) px(g,bx+8,y,bw-16,1,'#54381f');
-    px(g,bx+8,y0,bw-16,1,'#8a6336');
-    const hx=bx+13, hy=y0+4;                   // 建造中の船体（骨だけ）
-    px(g,hx,hy,26,7,'#c9b184');
-    px(g,hx,hy,26,1,'#e0cfa4');
-    px(g,hx,hy+6,26,1,'#8a7450');
-    for(let i=2;i<26;i+=4) px(g,hx+i,hy+1,1,5,'#8a7450');
-    px(g,hx+26,hy+1,3,5,'#c9b184');
-  }
+  // 港へ下りる道
+  px(g,8,PORT_H/2-4,gw-38,8,'#8a7c62'); px(g,8,PORT_H/2-4,gw-38,1,'#9d8e72');
   // 灯台
-  const lx=20, ly=100;
-  px(g,lx,ly,12,58,'#e6e2d6');
-  for(let i=0;i<3;i++) px(g,lx,ly+6+i*12,12,4,'#c8352c');
-  px(g,lx-2,ly-7,16,7,'#3a3730');
-  px(g,lx+1,ly-6,10,5,'#f2e08a');
-  px(g,lx-1,ly-10,14,3,'#4a4740');
+  { const lx=166, ly=46, lh=42;
+    px(g,lx,ly,12,lh,'#e6e2d6');
+    for(let i=0;i<3;i++) px(g,lx,ly+5+i*12,12,4,'#c8352c');
+    px(g,lx-2,ly-7,16,7,'#3a3730'); px(g,lx+1,ly-6,10,5,'#f2e08a'); px(g,lx-1,ly-10,14,3,'#4a4740'); }
+
+  for(const id of FAC_IDS) drawFacility(g,id,S.fac[id],PLOT[id],R);
+
+  // 家。人口に合わせて港に近いほうから建つ
+  const nh=Math.min(HOUSE_SLOTS.length, Math.ceil(population()/HOUSE_PER));
+  const ROOF=['#9c4a33','#3f6d86','#6b4a28','#7a5a8a','#2f6b4a','#b0642c'];
+  const WALL=['#e6dccb','#d9cdb6','#efe6d4','#cfc7b4'];
+  for(let k=0;k<nh;k++){
+    const [hx,hy]=HOUSE_SLOTS[k], hr=seeded(hx*977+hy*131);
+    const roof=ROOF[Math.floor(hr()*ROOF.length)], wall=WALL[Math.floor(hr()*WALL.length)];
+    px(g,hx+2,hy,6,1,roof); px(g,hx+1,hy+1,8,1,roof); px(g,hx,hy+2,10,2,roof);
+    px(g,hx+1,hy+4,8,5,wall); px(g,hx+1,hy+8,8,1,'rgba(0,0,0,.2)');
+    px(g,hx+4,hy+6,2,3,'#3a2a1a'); px(g,hx+2,hy+5,1,1,'#2a3a48'); px(g,hx+7,hy+5,1,1,'#2a3a48');
+  }
+
   // 桟橋（東へ伸ばす）
   const py0=PORT_H/2-9;
-  px(g,gw,py0,84,18,'#6b4a28');
-  px(g,gw,py0,84,2,'#8a6336');
-  px(g,gw,py0+16,84,2,'#4a3119');
+  px(g,gw,py0,84,18,'#6b4a28'); px(g,gw,py0,84,2,'#8a6336'); px(g,gw,py0+16,84,2,'#4a3119');
   for(let x=gw+6;x<gw+82;x+=9){ px(g,x,py0+18,3,16,'#4a3119'); px(g,x,py0+18,1,16,'#5c3d20'); }
-  // 桟橋の上の小屋と旗
-  px(g,gw+12,py0-15,20,15,'#d9d3c4'); px(g,gw+12,py0-15,20,3,'#9c4a33');
+  px(g,gw+12,py0-15,20,15,'#d9d3c4'); px(g,gw+12,py0-15,20,3,'#9c4a33');   // 漁協（水揚げ場）
   px(g,gw+18,py0-8,8,8,'#2a2620');
-  px(g,gw+70,py0-22,1,22,'#8a6a3f');
-  px(g,gw+71,py0-22,7,4,'#e0332c'); px(g,gw+71,py0-18,6,3,'#f2b32c');
-  // 係留してあるはしけ
+  px(g,gw+70,py0-22,1,22,'#8a6a3f'); px(g,gw+71,py0-22,7,4,'#e0332c'); px(g,gw+71,py0-18,6,3,'#f2b32c');
   px(g,gw+30,py0+20,26,7,'#3a5f7a'); px(g,gw+30,py0+20,26,2,'#5d8aa8');
   portCv=c;
+}
+/* 建物の共通形。(x,yb) は左下。屋根は庇ぶん左右に1pxはみ出す */
+function bldg(g,x,yb,w,h,wall,roof,door){
+  const top=yb-h;
+  px(g,x,top,w,h,wall);
+  px(g,x-1,top-3,w+2,3,roof); px(g,x-1,top-1,w+2,1,'rgba(0,0,0,.18)');
+  px(g,x,yb-1,w,1,'rgba(0,0,0,.25)');
+  for(let wx=x+3; wx<x+w-4; wx+=6) px(g,wx,top+3,3,2,'#2a3a48');
+  if(door!==false) px(g,x+(w>>1)-2,yb-7,4,7,'#2a2620');
+  return top;
+}
+/* Lv0 は空き地。杭と縄と看板だけ立っていて、ここに何か建つと分かる */
+function emptyLot(g,P){
+  const yb=P.sy+P.sh, x0=P.sx+3, x1=P.sx+P.sw-4, y0=yb-15;
+  px(g,x0,y0,x1-x0,13,'#7d6f55');
+  for(let x=x0;x<=x1;x+=2){ px(g,x,y0-1,1,1,'#c9b184'); px(g,x,yb-2,1,1,'#c9b184'); }
+  for(const [x,y] of [[x0,y0-3],[x1,y0-3],[x0,yb-5],[x1,yb-5]]) px(g,x,y,1,4,'#5a3a1c');
+  const sx=P.sx+(P.sw>>1);
+  px(g,sx,yb-24,1,10,'#6b4a28'); px(g,sx-5,yb-27,11,6,'#e6dccb'); px(g,sx-4,yb-25,9,1,'#9c8f7a');
+}
+function drawFacility(g,id,lv,P,R){
+  if(lv<=0 && id!=='ship'){ emptyLot(g,P); return; }
+  const yb=P.sy+P.sh, x=P.sx+2;
+  if(id==='gear'){                                   // 漁具工房
+    const [w,h]=[[0,0],[22,14],[30,18],[38,22],[44,26],[48,30]][lv];
+    const top=bldg(g,x,yb,w,h,'#c9a878','#8a4a2a');
+    for(let i=0;i<Math.min(lv+1,6) && lv>=2;i++){     // 立てかけた竿
+      const rx=x+w+1+i*2; line(g,rx,yb-1,rx+3,yb-16,'#caa268');
+    }
+    if(lv>=3){ px(g,x+3,top+7,w-6,4,'#d8322a'); px(g,x+5,top+8,w-10,1,'#f6f0d4'); }
+    if(lv>=5){                                       // 屋根の上の巨大な竿
+      line(g,x+4,top-3,x+30,top-26,'#caa268'); line(g,x+5,top-3,x+31,top-26,'#8f6f42');
+      px(g,x+31,top-25,1,12,'#cfdde6'); px(g,x+28,top-13,7,3,'#2f80af'); px(g,x+34,top-12,1,1,'#06202f');
+    }
+  }else if(id==='engine'){                           // 整備場
+    const [w,h]=[[0,0],[24,14],[32,18],[40,22],[46,26],[52,30]][lv];
+    const top=bldg(g,x,yb,Math.min(w,P.sw-4),h,'#9aa3aa','#4c5358',false);
+    const dw=Math.min(14,w-8), dx=x+(Math.min(w,P.sw-4)>>1)-(dw>>1);
+    px(g,dx,yb-10,dw,10,'#5f676d'); for(let yy=yb-9;yy<yb;yy+=2) px(g,dx,yy,dw,1,'#737c83');   // シャッター
+    if(lv>=2){ px(g,x+2,yb-6,4,5,'#b8352c'); px(g,x+2,yb-6,4,1,'#d8594c'); }                 // ドラム缶
+    if(lv>=3){ const cx=x+Math.min(w,P.sw-4)-3; px(g,cx,top-14,2,14,'#e0a92c'); px(g,cx-14,top-14,16,2,'#e0a92c'); px(g,cx-13,top-12,1,6,'#6b6f73'); }
+    if(lv>=4){ px(g,x+8,yb-5,8,5,'#3c4248'); px(g,x+9,yb-4,1,1,'#aab3b9'); px(g,x+14,yb-4,1,1,'#aab3b9'); }
+    if(lv>=5){ const ex=x+10, ey=top+8; px(g,ex-3,ey-3,7,7,'#f2b32c');                      // プロペラの紋
+      px(g,ex,ey-5,1,11,'#8a5f12'); px(g,ex-5,ey,11,1,'#8a5f12'); }
+  }else if(id==='tank'){                             // 燃料タンク
+    const sets=[[],[[12,14]],[[12,16],[10,12]],[[16,24],[12,16]],[[16,32],[13,22],[8,12]],[[18,42],[13,28],[9,16]]][lv];
+    let tx=P.sx+1;
+    for(const [w,h] of sets){
+      const top=yb-h;
+      px(g,tx,top+2,w,h-2,'#dfe4e7'); px(g,tx+1,top+1,w-2,1,'#dfe4e7'); px(g,tx+2,top,w-4,1,'#eef2f4');
+      px(g,tx,top+2,2,h-2,'#b8c0c5'); px(g,tx+w-2,top+2,2,h-2,'#c8cfd3');
+      for(let yy=top+6;yy<yb-3;yy+=9) px(g,tx,yy,w,1,'#c8352c');
+      for(let yy=top+3;yy<yb;yy+=2) px(g,tx+w-4,yy,1,1,'#6b6f73');       // はしご
+      px(g,tx,yb-1,w,1,'rgba(0,0,0,.25)');
+      tx+=w+2;
+    }
+  }else if(id==='fish'){                             // 水産加工場
+    const [w,h]=[[0,0],[24,14],[34,18],[44,22],[52,26],[60,30]][lv];
+    const top=bldg(g,x,yb,w,h,'#e8ecef','#3f6d86');
+    px(g,x+3,top+7,7,3,'#2f80af'); px(g,x+2,top+7,1,3,'#2f80af'); px(g,x+8,top+8,1,1,'#06202f');   // 魚の看板
+    const nc = lv>=5?3:(lv>=4?2:(lv>=2?1:0));
+    for(let k=0;k<nc;k++){                           // 煙突と煙
+      const cx=x+w-6-k*9, ch=10+2*lv;
+      px(g,cx,top-ch,4,ch,'#9c4a33'); px(g,cx,top-ch,4,1,'#7a3726');
+      for(let q=0;q<4;q++) px(g,cx+q-1,top-ch-3-q*2,2,2,'rgba(220,230,235,'+(0.7-q*0.15)+')');
+    }
+    if(lv>=3){ px(g,x+w,yb-5,10,1,'#3c4248'); for(let q=0;q<10;q+=3) px(g,x+w+q,yb-4,1,1,'#6b6f73'); }  // コンベア
+    if(lv>=5){ const fx=x+14, fy=top-10;             // 屋根の上の巨大なカツオ
+      px(g,fx,fy,22,8,'#2f739c'); px(g,fx,fy,22,2,'#12466a'); px(g,fx,fy+6,22,2,'#b7dcef');
+      px(g,fx-4,fy-2,4,12,'#2f739c'); px(g,fx+19,fy+2,1,1,'#06202f'); px(g,fx+10,fy+8,1,3,'#6b6f73'); }
+  }else if(id==='ship'){                             // 造船所
+    const [w,h]=[[22,14],[32,18],[42,22],[52,26],[60,30]][lv];
+    const wall=lv===0?'#8a6a3f':'#3f6d86', roof=lv===0?'#5c3d20':'#2d5266';
+    bldg(g,x,yb,w,h,wall,roof,false);
+    const sw2=Math.min(30,14+lv*4), sx2=x+(w>>1)-(sw2>>1);
+    px(g,sx2,yb-12,sw2,12,'#2a2620');               // 開いた口
+    for(let yy=yb;yy<PORT_H-24;yy++){ px(g,sx2-2,yy,sw2+4,1,'#6b4a28'); }   // 浜へ下りる船台
+    for(let yy=yb;yy<PORT_H-24;yy+=4) px(g,sx2-2,yy,sw2+4,1,'#54381f');
+    const hl=10+lv*8, hx=sx2+(sw2>>1)-(hl>>1), hy=yb+3;   // 建造中の船体
+    px(g,hx,hy,hl,6,lv>=4?'#8b949b':'#c9b184'); px(g,hx,hy,hl,1,lv>=4?'#aab3b9':'#e0cfa4');
+    for(let q=2;q<hl;q+=4) px(g,hx+q,hy+1,1,4,lv>=4?'#5f676d':'#8a7450');
+    for(let k=0;k<(lv>=4?2:(lv>=2?1:0));k++){       // 門型クレーン
+      const gx0=sx2-4+k*(sw2+6), gh=16+lv*3;
+      px(g,gx0,yb-gh,2,gh+8,'#e0a92c');
+    }
+    if(lv>=2){ const gh=16+lv*3; px(g,sx2-4,yb-gh,(lv>=4?sw2+8:4),2,'#e0a92c'); }
+  }
 }
 /* 入港が始まる円。静止しているので1枚に焼いて貼るだけにする */
 let portRing=null;
@@ -1102,7 +1196,7 @@ const PORT_ANCHOR={x:PORT_W-46, y:PORT_H/2};
 function portOrigin(){ return {x:PORT.x-PORT_ANCHOR.x, y:PORT.y-PORT_ANCHOR.y}; }
 /* 陸の当たり。buildPort の陸（スプライトの x:0〜150, y:26〜174）を世界座標に直したもの。
    絵を描き変えたらここも合わせる。margin は汀線の岩のぶんの余白 */
-const LAND={ sx0:0, sy0:26, sx1:150, sy1:PORT_H-26, margin:5 };
+const LAND={ sx0:0, sy0:26, sx1:PORT_LANDW, sy1:PORT_H-26, margin:5 };
 function landRect(){
   const o=portOrigin();
   return {x0:LAND.sx0+o.x-LAND.margin, y0:LAND.sy0+o.y-LAND.margin,
@@ -1175,6 +1269,11 @@ function buildIcon(id){
     px(g,3,5,10,1,'#8f3a18'); px(g,3,10,10,1,'#8f3a18');
     px(g,6,0,4,2,'#8a99a3'); px(g,7,0,2,1,'#cfd9de');
     px(g,5,7,6,2,'#f2e6c8'); px(g,6,7,1,2,'#c8562a'); px(g,9,7,1,2,'#c8562a');
+  }else if(id==='fish'){                     // 水産加工場：カツオと¥
+    px(g,1,8,9,4,'#2f80af'); px(g,0,7,2,6,'#2f80af'); px(g,8,9,2,1,'#d6e9f5');
+    px(g,2,9,6,1,'#1a4d6c'); px(g,9,9,1,1,'#06202f');
+    px(g,10,1,5,1,G); px(g,11,2,1,1,G); px(g,13,2,1,1,G); px(g,12,3,1,4,G);
+    px(g,10,4,5,1,G); px(g,10,6,5,1,G);
   }else if(id==='lure'){
     g.strokeStyle=G; g.lineWidth=1;
     g.beginPath(); g.arc(8,8,2.5,0,TAU); g.stroke();
@@ -1203,15 +1302,14 @@ function buildSea(){
 }
 
 /* ---------------- 強化定義 ---------------- */
-/* 港で買えるもの。船体は造船所（SHIPS）へ移したのでここには無い。
-   apply は1段ぶん。値段は costOf(id) を見る */
+/* 航海中、画面の下に並べる今の能力。強化は島の施設で行うので、ここは表示だけ。
+   lv はチップを点灯させるかどうかにだけ使う */
 const UPG=[
-  {id:'crew', max:99, lv:()=>S.up.crew, apply:()=>{S.up.crew+=1;}},
-  {id:'rate', max:10, lv:()=>S.up.rate, apply:()=>{S.up.rods=(S.up.rods||0)+rodGrant(); S.up.rate++;}},
-  {id:'engine', max:10, lv:()=>S.up.engine, apply:()=>{S.up.engine++;}},
-  {id:'sonar', max:6, lv:()=>S.up.sonar, apply:()=>{S.up.sonar++;}},
-  {id:'lure', max:8, lv:()=>S.up.lure, apply:()=>{S.up.lure++;}},
-  {id:'tank', max:8, lv:()=>(S.up.tank||0), apply:()=>{S.up.tank=(S.up.tank||0)+1;}}
+  {id:'crew',   max:99, lv:()=>S.up.crew,     apply:()=>{}},
+  {id:'rate',   max:5,  lv:()=>S.fac.gear,    apply:()=>{}},
+  {id:'engine', max:5,  lv:()=>S.fac.engine,  apply:()=>{}},
+  {id:'fish',   max:5,  lv:()=>S.fac.fish,    apply:()=>{}},
+  {id:'tank',   max:5,  lv:()=>S.fac.tank,    apply:()=>{}}
 ];
 const UPG_BY={}; UPG.forEach(u=>UPG_BY[u.id]=u);
 const UPG_IDS=[...new Set(UPG.map(u=>u.id))];   // 表示はこちら。プールは漁師が3枚あるため
@@ -1230,7 +1328,8 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
-  land:null, parts2:[], toriT:20,
+  land:null, parts2:[], toriT:20, ret:null,
+  fac:{ship:0, engine:0, gear:0, fish:0, tank:0},
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
 const TONS=[9,19,49,119,199];
@@ -1411,7 +1510,6 @@ const FUEL={
   idleRate:0.1,        // 機関は停めない。巡航で走っているときの何割かを、止まっていても食う。
                        // 集魚を積んで居座る漁は潰さない。ただ 0 だとそれが無料になるので、
                        // ちゃんと燃料を払わせる。上げるほど居座りが不利になる
-  dryPenalty:0.5       // 燃料切れで帰ったときの水揚げ倍率
 };
 const YEN=50;          // カツオ1本の値段
 /* 船。art は既存の船体グラフィック(1〜5)のどれを使うか。
@@ -1426,20 +1524,46 @@ const SHIPS=[
   {id:'titanic', art:7, lv:6, seats:50, fuel:30000, price:5000000},
   {id:'yamato',  art:8, lv:7, seats:70, fuel:45000, price:30000000}
 ];
-/* 港での値段。n 段目の値段 = base * mul^n */
-const PRICE={
-  crew:  {base:3000, mul:1.18},
-  rate:  {base:8000, mul:1.60},
-  engine:{base:5000, mul:1.50},
-  sonar: {base:4000, mul:1.50},
-  lure:  {base:6000, mul:1.50},
-  tank:  {base:4000, mul:1.50}
+/* ================= 島の施設 =================
+   資金を払う → 施設Lvが上がる → 対応する能力が恒久的に上がる。
+   漁師は雇うのではなく島の人口から出る。人口は施設Lvの合計で増え、船に乗れるだけ乗る。
+   魚探と集魚はLv1固定 */
+const FAC_IDS=['ship','engine','gear','fish','tank'];
+const FAC={
+  ship:  {name:'造船所',     note:'船を大きくする',   max:4},   // Lv がそのまま SHIPS の番号。値段は SHIPS.price
+  engine:{name:'整備場',     note:'船の足を速くする', max:5, price:[8000,32000,128000,512000,2000000]},
+  gear:  {name:'漁具工房',   note:'竿を増やす',       max:5, price:[10000,40000,160000,640000,2500000]},
+  fish:  {name:'水産加工場', note:'カツオを高く売る', max:5, price:[12000,48000,190000,760000,3000000]},
+  tank:  {name:'燃料タンク', note:'遠くまで行ける',   max:5, price:[6000,24000,96000,380000,1500000]}
 };
-const TANK_STEP=0.35;  // 燃料タンク1段で最大燃料が何割増えるか
-const TANK_MAX=8;
+const FAC_EFF={
+  engine:2,     // 整備場1段 = 機関2段ぶん（機関1段で速さ×1.12）。Lv5で以前の機関Lv10と同じ
+  gear:0.4,     // 漁具工房1段で、漁師1人あたりの竿が0.4本増える。Lv5で全員が3本持ち（持てる上限）
+  fish:0.4,     // 水産加工場1段で売値が4割上がる。Lv5で3倍
+  tank:0.56     // 燃料タンク1段で最大燃料が56%増える。Lv5で以前のタンクLv8と同じ3.8倍
+};
+const POP={base:2, perLv:3};   // 人口 = base + perLv × 施設Lvの合計。最初は2人、全部上げきると74人
 
 function ship(){ return SHIPS[S.shipIdx]; }
-function fuelMax(){ return Math.round(ship().fuel*(1+TANK_STEP*(S.up.tank||0))); }
+function facPrice(id){
+  const lv=S.fac[id];
+  if(lv>=FAC[id].max) return Infinity;
+  return id==='ship' ? SHIPS[lv+1].price : FAC[id].price[lv];
+}
+function population(){ let n=0; for(const id of FAC_IDS) n+=S.fac[id]; return POP.base+POP.perLv*n; }
+function fishYen(lv){ return Math.round(YEN*(1+FAC_EFF.fish*(lv===undefined?S.fac.fish:lv))); }
+function fuelMaxAt(si,tankLv){ return Math.round(SHIPS[si].fuel*(1+FAC_EFF.tank*tankLv)); }
+function fuelMax(){ return fuelMaxAt(S.shipIdx, S.fac.tank); }
+/* 施設Lvから、船・乗る人数・竿の本数を組み直す。買ったあとと読み込んだあとに呼ぶ */
+function applyFac(){
+  S.shipIdx=S.fac.ship; S.up.hull=SHIPS[S.shipIdx].art;
+  S.up.engine=S.fac.engine*FAC_EFF.engine;
+  S.up.sonar=1; S.up.lure=1;
+  S.up.crew=Math.min(population(), stat.seats());
+  S.up.rods=Math.round(S.up.crew*FAC_EFF.gear*S.fac.gear);
+  S.up.rate=S.fac.gear; S.up.tank=S.fac.tank;
+  layoutCrew();
+}
 function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
 /* 濃さの倍率。1=近海、richCap=頭打ち */
 function seaRichAt(x,y){
@@ -1450,16 +1574,6 @@ function seaRichAt(x,y){
 function seaRich(){ return seaRichAt(S.boat.x, S.boat.y); }
 /* 上の倍率を 0〜1 に直したもの。群れの数や密度など、青天井にしたくないものに使う */
 function seaT(){ return Math.log2(seaRich())/Math.log2(SEA.richCap); }
-function costOf(id){
-  const P=PRICE[id]; if(!P) return Infinity;
-  const n = id==='crew' ? (S.up.crew-2) : (id==='tank' ? (S.up.tank||0) : S.up[id]);
-  return Math.round(P.base*Math.pow(P.mul,n));
-}
-function canBuy(id){
-  if(id==='crew') return S.up.crew<stat.seats();
-  if(id==='tank') return (S.up.tank||0)<TANK_MAX;
-  const u=UPG_BY[id]; return u ? S.up[id]<u.max : false;
-}
 
 const stat = {
   rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
@@ -1495,7 +1609,8 @@ function valOf(id,u){
       r={n: v<100? v.toFixed(1) : fmt(Math.round(v)), u:t('unit.rate')}; break; }
     case 'engine': r={n:(stat.speed(u)*0.25).toFixed(1), u:t('unit.knot')}; break;
     case 'sonar':  r={n:'+'+Math.round((stat.sonar(u)/SONAR_BASE-1)*100)+'%', u:''}; break;
-    case 'tank':   r={n:fmtDist(Math.round(ship().fuel*(1+TANK_STEP*(u.tank||0)))*M_PER_PX), u:''}; break;
+    case 'tank':   r={n:fmtDist(fuelMax()*M_PER_PX), u:''}; break;
+    case 'fish':   r={n:'¥'+fmt(fishYen()), u:'/本'}; break;
     case 'lure':   r = u.lure===0 ? {n:t('unit.none'), u:''}
                      : {n:'+'+Math.round((stat.lureR(u)/LURE_BASE-1)*100)+'%', u:''}; break;
   }
@@ -1529,6 +1644,7 @@ function initAssets(){
       netters[r][p][i]=buildNetter(i,r,p);
     } }
   UPG_IDS.forEach(id=>ICONS[id]=buildIcon(id));
+  ICONS.ship=buildIcon('hull'); ICONS.gear=ICONS.rate;
 }
 
 /* ================= 魚群 ================= */
@@ -2021,14 +2137,8 @@ function updateVoyage(dt){
     const over=clamp((sp/cruise-1)/(NAV_BOOST-1),0,1);      // 0=巡航 1=倍速
     const cruiseBurn=stat.speed()*FUEL.perPx;               // 巡航1秒ぶんの消費
     S.fuel-=sp*dt*FUEL.perPx*(1+FUEL.boostPenalty*over) + cruiseBurn*FUEL.idleRate*dt;
-    if(S.fuel<=0){                       // 燃料切れ。沈めも殺しもせず、港へ戻して半値にする
-      S.fuel=0; S.dry=true;
-      const dk=dockPos(), d=Math.max(1,dockDist());
-      S.boat.x=dk.x+(S.boat.x-dk.x)/d*(PORT.r-6);       // 船着場の手前まで曳かれてきた扱い
-      S.boat.y=dk.y+(S.boat.y-dk.y)/d*(PORT.r-6);
-      S.boat.sp=0; S.boat.vx=0; S.boat.vy=0;
-      beginDocking();
-    }else if(inPortArea() && S.voyage>0) beginDocking();
+    if(S.fuel<=0){ S.fuel=0; beginReturn(); }    // 燃料切れ。罰は無く、暗転して港へ戻るだけ
+    else if(inPortArea() && S.voyage>0) beginDocking();
     return;
   }
   if(S.phase==='docking' || S.phase==='departing'){
@@ -2051,12 +2161,37 @@ function updateVoyage(dt){
 function updateCam(dt){
   if(S.phase==='sea'){ S.camK=0; return; }
   if(S.phase==='port'||S.phase==='landing'){ S.camK=1; return; }   // 着岸は2px手前で止まるので締めておく
+  if(S.phase==='returning'){ S.camK=S.ret&&S.ret.moved?1:0; return; }
   S.camK = clamp(1-dockDist()/PORT.r, 0, 1);
 }
 function camPos(){
   const B=S.boat, k=S.camK;
   const v=portView();
   return {x:B.x+(v.x-B.x)*k, y:B.y+(v.y-B.y)*k};
+}
+/* 燃料切れ、またはメニューの「港へ戻る」。短く暗転して港に着け、そのまま水揚げする。
+   帰るための燃料を残しておく必要は無い */
+const RET={fade:0.35, hold:0.15};   // 暗くなるまで・真っ暗のまま・明けるまでの秒数（明けも fade）
+function beginReturn(){
+  if(S.phase!=='sea') return;
+  S.phase='returning'; S.ret={t:0, moved:false};
+  S.fever=false; S.fvT=0; S.fvRound=0;
+  S.dir.x=0; S.dir.y=0; S.dir.t=1; S.stick.id=-1; S.stick.on=false;
+}
+function updateReturn(dt){
+  const R=S.ret; if(!R) return;
+  R.t+=dt;
+  if(!R.moved && R.t>=RET.fade){               // 真っ暗なあいだに船着場へ移す
+    const d=dockPos(), B=S.boat;
+    B.x=d.x; B.y=d.y; B.sp=0; B.vx=0; B.vy=0; B.face=-1; B.hd=Math.PI;
+    placeCrew(); R.moved=true;
+  }
+  if(R.t>=RET.fade*2+RET.hold){ S.ret=null; arrivePort(); }
+}
+function retAlpha(){
+  const R=S.ret; if(!R) return 0;
+  const a=RET.fade, h=RET.hold, t=R.t;
+  return t<a ? t/a : (t<a+h ? 1 : Math.max(0,1-(t-a-h)/a));
 }
 function beginDocking(){
   S.phase='docking';
@@ -2082,10 +2217,9 @@ const HAUL={
   sfxPerSec:16      // 音は間引く。粒の数だけ鳴らすと潰れる
 };
 function arrivePort(){
-  const rate = S.dry?FUEL.dryPenalty:1;
-  const fish=S.hold, yen=Math.round(fish*YEN*rate);
+  const fish=S.hold, yen=Math.round(fish*fishYen());   // 売値は水産加工場のLvで上がる
   S.fuel=fuelMax();
-  S.landed={fish, yen, dry:S.dry};
+  S.landed={fish, yen};
   S.phase='landing';
   S.land={t:0, fish, yen, money0:S.money, pops:0, done:0, sfxT:0,
           n:Math.min(HAUL.maxPops, Math.max(1,fish))};
@@ -2096,7 +2230,7 @@ function arrivePort(){
 function finishLanding(){
   const L=S.land;
   if(L){ S.money=L.money0+L.yen; }
-  S.hold=0; S.dry=false; S.land=null; S.parts2.length=0;
+  S.hold=0; S.land=null; S.parts2.length=0;
   elHaul.classList.remove('on'); elHaul.textContent='';
   S.phase='port';
   saveGame();
@@ -2762,6 +2896,8 @@ function draw(){
   drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawLanding();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
   drawSpots(); drawPortArrow(); drawBurst(); drawStick();
+  const ra=retAlpha();
+  if(ra>0){ ctx.fillStyle='rgba(3,18,29,'+ra.toFixed(3)+')'; ctx.fillRect(0,0,VW,VH); }
 }
 
 /* ================= 魚群探知機 ================= */
@@ -2907,12 +3043,11 @@ function buildChips(){
     chipEls[u.id]={box:d,val:i};
   });
 }
-function bump(u,n){                     // デバッグ用：強化を直接増減する
-  if(u.id==='crew')       S.up.crew=clamp(S.up.crew+n,0,200);
-  else if(u.id==='hull')  S.up.hull=clamp(S.up.hull+n,1,5);
-  else if(u.id==='sonar') S.up.sonar=clamp(S.up.sonar+n,1,u.max);
-  else                    S.up[u.id]=clamp(S.up[u.id]+n,0,u.max);
-  layoutCrew(); updateHUD();
+function bump(u,n){                     // デバッグ用：施設Lvを直接増減する（漁師のチップは造船所）
+  const id={crew:'ship', rate:'gear', engine:'engine', fish:'fish', tank:'tank'}[u.id];
+  if(!id) return;
+  S.fac[id]=clamp(S.fac[id]+Math.sign(n),0,FAC[id].max);
+  applyFac(); buildPort(); updateHUD();
 }
 let lastTxt={};
 function setTxt(el,v){ if(lastTxt[el.id]!==v){ lastTxt[el.id]=v; el.textContent=v; } }
@@ -2920,7 +3055,7 @@ const elCatch=document.querySelector('.catch'), elFever=document.getElementById(
 const elFvBadge=document.getElementById('fvbadge'), elFvBar=document.getElementById('fvbar');
 const elFvBig=document.getElementById('fvbig');
 const elFvRound=document.getElementById('fvround');
-const elFuelFill=document.getElementById('fuelfill'), elFuelHome=document.getElementById('fuelhome');
+const elFuelFill=document.getElementById('fuelfill');
 function updateHUD(){
   elScore.style.transform = S.pop>0.01 ? 'scale('+(1+0.26*S.pop)+')' : '';
   const playing=S.phase==='sea';
@@ -2939,12 +3074,8 @@ function updateHUD(){
   }
   const fu=clamp(S.fuel/Math.max(1,fuelMax()),0,1);
   elFuelFill.style.width=(fu*100).toFixed(1)+'%';
-  /* 数字は出さない。かわりに「帰港に要るぶん」をゲージ上の目盛りで示す。
-     残量がこの目盛りを割ったら港へ戻れない＝ゲージが赤くなる */
-  const home=clamp(portDist()*FUEL.perPx/Math.max(1,fuelMax()),0,1);
-  elFuelHome.hidden = S.phase!=='sea';
-  elFuelHome.style.left=(home*100).toFixed(1)+'%';
-  elClock.classList.toggle('warn', S.phase==='sea' && fu < home*1.15);
+  /* 数字は出さない。帰るための燃料は残さなくていいので、残りが少なくなったら赤くするだけ */
+  elClock.classList.toggle('warn', S.phase==='sea' && fu < 0.2);
   setTxt(elScore, fmt(S.hold));
   /* 強化が run から消えたので、このバーは今なにも指していない（HTML側で畳んである） */
   UPG_IDS.forEach(id=>{
@@ -3014,7 +3145,7 @@ const scrResult=document.getElementById('result'), promptEl=document.getElementB
 /* 1回の航海の仕切り直し。所持金・船・強化は永続なので触らない */
 function reset(){
   S.t=0; S.started=false; S.score=0; S.level=1; S.need=9; S.prog=0; S.totalFish=0; S.chestT=20;
-  S.hold=0; S.dry=false; S.landed=null; S.land=null; S.parts2.length=0; S.camK=S.phase==='sea'?0:1;
+  S.hold=0; S.landed=null; S.land=null; S.ret=null; S.parts2.length=0; S.camK=S.phase==='sea'?0:1;
   S.schools.length=0; S.chests.length=0; S.crew.length=0;
   S.parts.length=0; S.wake.length=0; S.rings.length=0; S.spray.length=0; S.flash.length=0; S.pops.length=0; S.boil.length=0; S.boilAcc=0;
   S.net.t=netCycle(); S.net.phase='wait'; S.net.held.length=0; S.net.flash=0;
@@ -3153,12 +3284,8 @@ const elPShop=document.getElementById('pshop'), elPLog=document.getElementById('
 let shopOpen=null, hoverSpot=null;
 const SHIP_NAME=['木造の小舟','漁船','大型漁船','タイタニック','戦艦大和'];
 const elPTip=document.getElementById('ptip');
-/* 押せる建物。矩形は buildPort のスプライト座標。絵を動かしたらここも動かす */
-const SPOTS=[
-  {id:'crew', sx:160, sy:68,  sw:24, sh:26, name:'漁協',   note:'船員を雇う'},
-  {id:'gear', sx:12,  sy:43,  sw:56, sh:42, name:'漁具店', note:'釣具・機関・魚探・集魚・燃料'},
-  {id:'ship', sx:74,  sy:115, sw:58, sh:65, name:'造船所', note:'船を買い替える'}
-];
+/* 押せる建物。区画は PLOT（buildPort と共用） */
+const SPOTS=FAC_IDS.map(id=>Object.assign({id}, PLOT[id]));
 /* スプライト座標の矩形を、いま画面のどこに出ているかへ直す */
 function spotBox(sp){
   const o=portOrigin();
@@ -3175,8 +3302,9 @@ function spotAt(mx,my){
 function showTip(sp){
   if(!sp){ elPTip.hidden=true; return; }
   const b=spotBox(sp);
-  elPTip.querySelector('b').textContent=sp.name;
-  elPTip.querySelector('em').textContent=sp.note;
+  const lv=S.fac[sp.id], mx=FAC[sp.id].max;
+  elPTip.querySelector('b').textContent=FAC[sp.id].name+'  Lv'+lv+(lv>=mx?'（最大）':'');
+  elPTip.querySelector('em').textContent=FAC[sp.id].note;
   elPTip.style.left=((b.x0+b.x1)/2/VW*100)+'%';
   elPTip.style.top=((b.y0-3)/VH*100)+'%';
   elPTip.hidden=false;
@@ -3202,16 +3330,14 @@ function hidePort(){ elPort.hidden=true; hud.classList.add('on');
 function paintPort(){
   elPMoney.textContent=yen(S.money);
   const L=S.landed;
-  elPLog.innerHTML = L
-    ? ('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>'
-       + (L.dry?'\n<u>燃料切れ。半値でしか買ってもらえなかった</u>':'')
-       + '\n満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>')
-    : ('満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>  乗員 <b>'+S.up.crew+'/'+stat.seats()+'</b>');
+  elPLog.innerHTML=(L?('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>\n'):'')
+    +'人口 <b>'+population()+'</b>人  乗船 <b>'+S.up.crew+'/'+stat.seats()+'</b>\n'
+    +'売値 <b>'+yen(fishYen())+'</b>/本  満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>';
   if(!shopOpen){ elPShop.hidden=true; return; }
   const sp=SPOTS.find(x=>x.id===shopOpen);
   if(sp) placeShop(sp);
   elPShop.hidden=false; elPShop.innerHTML='';
-  if(shopOpen==='ship') paintShips(); else paintGearShop(shopOpen==='crew'?['crew']:['rate','engine','sonar','lure','tank']);
+  paintFac(shopOpen);
 }
 function shopRow(icon,name,sub,price,ok,onClick){
   const b=document.createElement('button'); b.className='prow'; b.disabled=!ok;
@@ -3226,38 +3352,30 @@ function shopRow(icon,name,sub,price,ok,onClick){
   if(ok) b.addEventListener('click',onClick);
   elPShop.appendChild(b);
 }
-function paintGearShop(ids){
-  for(const id of ids){
-    const u=UPG_BY[id]; if(!u) continue;
-    const maxed=!canBuy(id);
-    const cost=costOf(id);
-    const a=valOf(id,S.up), b2=valOf(id,nextUp(id));
-    let sub = id==='crew' ? (S.up.crew+' / '+stat.seats()+'人')
-            : id==='tank' ? ('航続 '+fmtDist(fuelMax()*M_PER_PX)+' → '+fmtDist(Math.round(ship().fuel*(1+TANK_STEP*((S.up.tank||0)+1)))*M_PER_PX))
-            : (a.n+a.u+' → '+b2.n+b2.u);
-    if(id==='crew' && maxed) sub='釣り座が埋まっている。船を替えるまで雇えない';
-    const ok=!maxed && S.money>=cost;
-    shopRow(ICONS[id], t('up.'+id+'.name'), sub, maxed?'—':yen(cost), ok, ()=>{
-      S.money-=cost; u.apply(); layoutCrew(); saveGame(); sfxPick(); paintPort();
-    });
+/* その Lv のときの能力を、読める言葉で */
+function facEffect(id,lv){
+  switch(id){
+    case 'ship':   return SHIP_NAME[lv]+'（乗員 '+SHIPS[lv].seats+'人）';
+    case 'engine': return (stat.speed({engine:lv*FAC_EFF.engine})*0.25).toFixed(1)+'ノット';
+    case 'gear':   return '竿 1人 '+String(+(1+FAC_EFF.gear*lv).toFixed(1))+'本';
+    case 'fish':   return yen(fishYen(lv))+'/本';
+    case 'tank':   return '航続 '+fmtDist(fuelMaxAt(S.shipIdx,lv)*M_PER_PX);
   }
+  return '';
 }
-function paintShips(){
-  SHIPS.forEach((sh,i)=>{
-    const own=i<=S.shipIdx;
-    const sub='乗員 '+sh.seats+'人　航続 '+fmtDist(sh.fuel*M_PER_PX);
-    const ok=!own && S.money>=sh.price && i===S.shipIdx+1;
-    shopRow(null, SHIP_NAME[i], sub, own?'所有':yen(sh.price), ok, ()=>{
-      S.money-=sh.price; setShip(i); saveGame(); sfxChest(); paintPort();
-    });
+function paintFac(id){
+  const f=FAC[id], lv=S.fac[id], maxed=lv>=f.max, price=facPrice(id);
+  const sub = maxed ? facEffect(id,lv)+'　これ以上は上げられない'
+            : facEffect(id,lv)+' → '+facEffect(id,lv+1)
+              +'<br>人口 '+population()+' → '+(population()+POP.perLv)+'人';
+  const ok=!maxed && S.money>=price;
+  shopRow(ICONS[id]||null, f.name+'　Lv'+lv+(maxed?'':' → '+(lv+1)), sub, maxed?'—':yen(price), ok, ()=>{
+    S.money-=price; S.fac[id]++;
+    applyFac(); buildPort();
+    const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;    // 船が替わっても船着場に着けておく
+    S.fuel=fuelMax();
+    saveGame(); (id==='ship'?sfxChest:sfxPick)(); paintPort();
   });
-}
-function setShip(i){
-  S.shipIdx=i; S.up.hull=SHIPS[i].art;
-  S.up.crew=Math.min(S.up.crew, stat.seats());
-  layoutCrew();
-  const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;      // 新しい船も船着場に着けておく
-  S.fuel=fuelMax();
 }
 /* 港では海面がそのまま操作盤になる。建物に合わせると名前が出て、押すと品書きが開く */
 frameEl.addEventListener('mousemove',e=>{
@@ -3280,22 +3398,17 @@ document.getElementById('pgo').addEventListener('click',departPort);
 /* ================= セーブ ================= */
 const SAVE_KEY='island.save';
 function saveGame(){
-  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({
-    v:1, money:S.money, ship:S.shipIdx, voyage:S.voyage,
-    crew:S.up.crew, rate:S.up.rate, rods:S.up.rods||0, engine:S.up.engine,
-    sonar:S.up.sonar, lure:S.up.lure, tank:S.up.tank||0
-  })); }catch(e){}
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({v:2, money:S.money, voyage:S.voyage, fac:S.fac})); }catch(e){}
 }
 function loadGame(){
   let d=null;
   try{ d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){}
   if(!d) return false;
   S.money=d.money|0; S.voyage=d.voyage|0;
-  S.shipIdx=clamp(d.ship|0,0,SHIPS.length-1);
-  S.up.hull=SHIPS[S.shipIdx].art;
-  S.up.rate=d.rate|0; S.up.rods=d.rods|0; S.up.engine=d.engine|0;
-  S.up.sonar=Math.max(1,d.sonar|0); S.up.lure=Math.max(1,d.lure|0); S.up.tank=d.tank|0;
-  S.up.crew=clamp(d.crew|0, 2, stat.seats());
+  const f = d.fac || {                          // 旧版（ひとつずつ買う方式）のセーブを施設Lvへ移す
+    ship:d.ship|0, engine:Math.round((d.engine|0)/2), gear:Math.round((d.rate|0)/2),
+    fish:0, tank:Math.round((d.tank|0)*5/8) };
+  for(const id of FAC_IDS) S.fac[id]=clamp(f[id]|0, 0, FAC[id].max);
   return true;
 }
 
@@ -3316,6 +3429,7 @@ muteBtn.addEventListener('click',e=>{ e.stopPropagation(); audioInit(); openMenu
 const elHaul=document.getElementById('haul');
 function paintGear(){}
 document.getElementById('mSound').addEventListener('click',()=>{ muted=!muted; paintSound(); });
+document.getElementById('mHome').addEventListener('click',()=>{ openMenu(false); beginReturn(); });
 document.getElementById('mClose').addEventListener('click',()=>openMenu(false));
 window.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
@@ -3382,6 +3496,7 @@ function tick(now){
     updateVoyage(dt);
     updateCam(dt);
     updateTori(dt);
+    if(S.phase==='returning') updateReturn(dt);
     if(S.phase==='landing') updateLanding(dt);
     if(S.parts2.length) updateParts2(dt);
     if(S.started && S.phase==='sea'){ updateFishing(dt); updateFever(dt); }
@@ -3421,8 +3536,9 @@ window.addEventListener('keydown',e=>{                 // 検証用：デバッ�
 /* ================= 起動 ================= */
 initAssets(); initPatterns(); buildChips();
 try{ const q=new URLSearchParams(location.search).get('lang'); if(q) setLang(q); }catch(e){}
-buildPort();
 loadGame();
+applyFac();
+buildPort();
 try{ if(localStorage.getItem('ippon.perf')==='1') perfToggle(true); }catch(e){}
 applyLang();
 reset(); S.mode='play'; S.started=false; S.phase='port';

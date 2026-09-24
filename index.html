@@ -1574,17 +1574,15 @@ const FAC_EFF={
 /* ================= アンロック =================
    施設・Lvは「条件を満たす → 解放される → お金を払って建てる」の2段。解放にお金はかからない。
    REQ[施設][Lv] がそのLvに上げるための条件で、次に条件が書かれたLvまでは同じ条件が続く。
-   {f:'engine',lv:2} は「整備場Lv2以上」、{pop:30} は「人口30人以上」。
-   造船所は島全体を育てないと上がらず、他の施設の上のほうは船を替えないと開かない */
+   条件はすべて人口。人口は何を建てても増えるので、どの施設から上げても次が開く。
+   「均等に上げる」のではなく「合計でどれだけ島を育てたか」で次の船や上のLvに届く。
+   {pop:30} は「人口30人以上」。人口 = 2 + 3×施設Lvの合計（最大134） */
 const REQ={
-  ship:  { 1:[{f:'engine',lv:2},{f:'gear',lv:2}],
-           2:[{f:'engine',lv:4},{f:'gear',lv:4},{f:'tank',lv:3}],
-           3:[{f:'engine',lv:6},{f:'gear',lv:6},{f:'tank',lv:6},{f:'fish',lv:5},{pop:80}],
-           4:[{f:'engine',lv:9},{f:'gear',lv:9},{f:'tank',lv:9},{f:'fish',lv:9}] },
-  engine:{ 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
-  gear:  { 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
-  tank:  { 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
-  fish:  { 1:[{f:'gear',lv:2}], 4:[{f:'ship',lv:1},{pop:30}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] }
+  ship:  { 1:[{pop:15}], 2:[{pop:40}], 3:[{pop:75}], 4:[{pop:110}] },
+  engine:{ 4:[{pop:25}], 7:[{pop:55}], 9:[{pop:85}] },
+  gear:  { 4:[{pop:25}], 7:[{pop:55}], 9:[{pop:85}] },
+  tank:  { 4:[{pop:25}], 7:[{pop:55}], 9:[{pop:85}] },
+  fish:  { 1:[{pop:10}], 4:[{pop:25}], 7:[{pop:55}], 9:[{pop:85}] }
 };
 function reqOf(id,L){                 // Lv L に上げるための条件（L以下で一番近く書かれたもの）
   const t=REQ[id]; if(!t) return [];
@@ -1601,7 +1599,7 @@ function unlocked(id,L){ return reqOf(id,L).every(condOk); }
 /* 条件を ✓ / ✗ つきで並べる。足りないものだけ色を変える */
 function condHtml(list){
   return list.map(c=>condOk(c) ? '<span class="rq ok">✓'+condText(c)+'</span>'
-                               : '<span class="rq ng">✗'+condText(c)+'</span>').join(' ');
+                               : '<span class="rq ng">✗'+condText(c)+(c.pop?'（いま'+population()+'）':'')+'</span>').join(' ');
 }
 /* いま次に上げられる段のうち、解放済みのものの集合（新しく開いたものを知らせるため） */
 function openSet(){

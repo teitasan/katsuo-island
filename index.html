@@ -1337,7 +1337,7 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
-  land:null, parts2:[], toriT:20, ret:null,
+  land:null, parts2:[], toriT:20, ret:null, npcs:[], npcFish:0,
   fac:{ship:0, engine:0, gear:0, fish:0, tank:0},
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
@@ -1572,6 +1572,7 @@ function applyFac(){
   S.up.rods=Math.round(S.up.crew*FAC_EFF.gear*S.fac.gear);
   S.up.rate=S.fac.gear; S.up.tank=S.fac.tank;
   layoutCrew();
+  buildFleet();                    // 乗り切れない住民はNPC船へ
 }
 function portDist(){ return Math.hypot(S.boat.x-PORT.x, S.boat.y-PORT.y); }
 /* 濃さの倍率。1=近海、richCap=頭打ち */
@@ -2333,6 +2334,104 @@ function departPort(){
   saveGame();
 }
 
+/* ================= NPC漁船 =================
+   自分の船に乗り切れない住民が、木造の小舟・漁船・大型漁船に適当に分乗して、
+   それぞれ港を中心とした輪の中を勝手に回って漁をする。
+   魚の群れは自分の船のまわりにしか居ないので、NPC船の漁獲は群れを見ず、
+   「乗っている人数 × その場所の海の濃さ」から毎秒いくらで出す。
+   漁をするのは自分が航海に出ているあいだだけで、獲ったぶんは自分の積荷に入る */
+const NPC={
+  types:[                         // art は船の絵、ring は港からの距離（内側〜外側 px）
+    {art:6, seats:8,  ring:[340,1200], speed:34},   // 木造の小舟
+    {art:3, seats:18, ring:[600,2400], speed:40},   // 漁船
+    {art:5, seats:32, ring:[900,4000], speed:46}    // 大型漁船
+  ],
+  fill:[0.6,1.0],     // 1隻にどれだけ乗せるか（席に対する割合）。この幅でばらつかせる
+  max:10,             // NPC船の上限。住民が余りすぎてもこれ以上は出さない
+  perCrew:0.1,        // 漁をしている1人が毎秒何本獲るか（海の濃さ1・竿1本のとき）
+  richPow:0.5,        // 海の濃さの効き。1なら濃さに比例、0なら場所によらない
+  fishSec:[5,11],     // 着いた場所で漁をする秒数
+  step:0.6            // 次の行き先までの角度の幅（rad）。大きくすると島を横切ることがある
+};
+/* 住民の余りから船団を組み直す。施設を上げたときと読み込んだときに呼ぶ */
+function buildFleet(){
+  const surplus=Math.max(0, population()-S.up.crew);
+  const R=seeded(surplus*7919+S.fac.ship*31+1);
+  const out=[]; let left=surplus;
+  while(left>0 && out.length<NPC.max){
+    const fit=NPC.types.filter(t=>t.seats*NPC.fill[0]<=left);
+    const pool=fit.length?fit:[NPC.types[0]];
+    const T=pool[Math.floor(R()*pool.length)];
+    const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
+    out.push(makeNpc(T,n,R)); left-=n;
+  }
+  S.npcs=out;
+}
+function makeNpc(T,n,R){
+  const b=boats[T.art-1];
+  const a=R()*TAU, r=T.ring[0]+(T.ring[1]-T.ring[0])*R();
+  const nb={T, b, n, x:PORT.x+Math.cos(a)*r, y:PORT.y+Math.sin(a)*r,
+    hd:a+Math.PI/2, face:1, sp:0, state:'fish', t:NPC.fishSec[0]+R()*(NPC.fishSec[1]-NPC.fishSec[0]),
+    tx:0, ty:0, acc:0, bob:R()*TAU, crew:[]};
+  // 釣り座の並べ方は自分の船と同じ（真ん中から両舷交互に）
+  const ns=b.seatX.length, mid=(ns-1)/2, byC=[];
+  for(let i=0;i<ns;i++) byC.push(i);
+  byC.sort((p,q)=>Math.abs(p-mid)-Math.abs(q-mid));
+  const order=[]; for(const i of byC){ order.push([0,i]); order.push([1,i]); }
+  for(let k=0;k<n && k<order.length;k++){
+    const fm={pal:Math.floor(R()*3), pose:0, pt:0, row:order[k][0], si:order[k][1]};
+    fm.lx=b.seatX[fm.si]-b.W/2+(fm.row===1?4:0);
+    fm.ly=(fm.row===0?b.railY:b.railY+2)-b.waterY;
+    nb.crew.push(fm);
+  }
+  return nb;
+}
+function npcNext(nb){                // 輪の上を少しずつ回る。大きく跳ぶと島を横切るので角度を絞る
+  const cur=Math.atan2(nb.y-PORT.y, nb.x-PORT.x), T=nb.T;
+  const a=cur+rnd(-NPC.step,NPC.step), r=rnd(T.ring[0],T.ring[1]);
+  nb.tx=PORT.x+Math.cos(a)*r; nb.ty=PORT.y+Math.sin(a)*r;
+  nb.state='sail';
+}
+function npcOnScreen(nb){ return Math.abs(nb.x-camX)<VW/2+nb.b.W && Math.abs(nb.y-camY)<VH/2+nb.b.H; }
+function updateNpcs(dt){
+  const atSea=S.phase==='sea', rodF=1+FAC_EFF.gear*S.fac.gear;
+  for(const nb of S.npcs){
+    nb.bob+=dt*2.4;
+    for(const fm of nb.crew) if(fm.pose===1){ fm.pt-=dt; if(fm.pt<=0) fm.pose=0; }
+    if(nb.state==='sail'){
+      const dx=nb.tx-nb.x, dy=nb.ty-nb.y, d=Math.hypot(dx,dy);
+      let dh=Math.atan2(dy,dx)-nb.hd;
+      while(dh>Math.PI) dh-=TAU; while(dh<-Math.PI) dh+=TAU;
+      nb.hd+=clamp(dh,-1.2*dt,1.2*dt);
+      nb.sp+=(nb.T.speed-nb.sp)*(1-Math.pow(0.1,dt));
+      if(d<12){ nb.state='fish'; nb.t=rnd(NPC.fishSec[0],NPC.fishSec[1]); }
+    }else{
+      nb.sp*=Math.pow(0.2,dt);
+      nb.t-=dt;
+      if(atSea){
+        nb.acc+=dt*nb.n*NPC.perCrew*rodF*Math.pow(seaRichAt(nb.x,nb.y),NPC.richPow);
+        const k=nb.acc|0; nb.acc-=k;
+        if(k>0){ S.hold+=k; S.score+=k; S.npcFish=(S.npcFish||0)+k; npcCatchFx(nb,k); }
+      }
+      if(nb.t<=0) npcNext(nb);
+    }
+    nb.x+=Math.cos(nb.hd)*nb.sp*dt; nb.y+=Math.sin(nb.hd)*nb.sp*dt;
+    const c=Math.cos(nb.hd); if(Math.abs(c)>0.2) nb.face=c>0?1:-1;
+  }
+}
+/* 画面に映っているときだけ、竿を上げて「+1」を出す */
+function npcCatchFx(nb,k){
+  if(!npcOnScreen(nb) || !nb.crew.length) return;
+  for(let i=0;i<Math.min(k,3);i++){
+    const fm=nb.crew[rint(0,nb.crew.length-1)];
+    fm.pose=1; fm.pt=.28;
+    if(S.pops.length<64){
+      const sp=fsprite(fm), tx=nb.face<0?-(fm.lx+sp.tip.x):(fm.lx+sp.tip.x);
+      S.pops.push({x:nb.x+tx, y:nb.y+fm.ly+sp.tip.y, t:0, fv:false});
+    }
+  }
+}
+
 /* ================= 船 ================= */
 function updateBoat(dt){
   const B=S.boat, sp=stat.speed();
@@ -2634,6 +2733,30 @@ function drawFisher(fm){
   const sp=fsprite(fm);
   ctx.drawImage(sp.cv, Math.round(fm.lx-sp.ax), Math.round(fm.ly-sp.ay));
 }
+function drawNpcs(){
+  const ox=OX, oy=OY, fishing=S.phase==='sea';
+  for(const nb of S.npcs){
+    const b=nb.b, sx=Math.round(nb.x+ox), sy=Math.round(nb.y+oy+Math.sin(nb.bob)*1.2);
+    if(sx<-b.W||sx>VW+b.W||sy<-b.H||sy>VH+b.H) continue;
+    ctx.globalAlpha=.32; ctx.fillStyle='#04202f';
+    ctx.beginPath(); ctx.ellipse(sx,sy+5,b.len/2+7,7,0,0,TAU); ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.save(); ctx.translate(sx,sy); if(nb.face<0) ctx.scale(-1,1);
+    for(const fm of nb.crew) if(fm.row===1) drawFisher(fm);
+    ctx.drawImage(b.cv,-Math.round(b.W/2),-b.waterY);
+    for(const fm of nb.crew) if(fm.row===0) drawFisher(fm);
+    ctx.restore();
+    if(fishing && nb.state==='fish'){               // 漁をしているあいだだけ糸を垂らす
+      ctx.fillStyle='rgba(216,232,240,.45)';
+      for(const fm of nb.crew){
+        if(fm.pose===1) continue;
+        const sp=fsprite(fm), tx=nb.face<0?-(fm.lx+sp.tip.x):(fm.lx+sp.tip.x);
+        const x0=sx+Math.round(tx), y0=sy+Math.round(fm.ly+sp.tip.y), dir=fm.row===0?1:-1;
+        for(let i=1;i<=8;i++) ctx.fillRect(x0, y0+dir*i, 1, 1);
+      }
+    }
+  }
+}
 function drawBoat(){
   const b=boats[S.up.hull-1], B=S.boat;
   const sx=Math.round(boatSX()), sy=Math.round(boatSY())+bobPx;
@@ -2902,7 +3025,7 @@ function draw(){
   setCam();
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
   drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
-  drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawLanding();
+  drawNpcs(); drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawLanding();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
   drawSpots(); drawPortArrow(); drawBurst(); drawStick();
   const ra=retAlpha();
@@ -3015,6 +3138,11 @@ function drawRadar(){
       g.imageSmoothingEnabled=false;
       g.drawImage(gullAtlas, 2*GCELL, 0, GCELL, GCELL, Math.round(x-GCELL*sc/2), Math.round(y-GCELL*sc/2), GCELL*sc, GCELL*sc);
     }
+  }
+  g.fillStyle='rgba(234,243,244,.8)';          // NPC船
+  for(const nb of S.npcs){
+    const x=C+(nb.x-B.x)*k, y=C+(nb.y-B.y)*k;
+    if(x>-4&&x<W+4&&y>-4&&y<W+4) g.fillRect(Math.round(x)-2, Math.round(y)-1, 5, 3);
   }
   {                                           // 港は錨ひとつで示す。陸を塗ると魚の反応が読みにくい
     const d=dockPos(), x=C+(d.x-B.x)*k, y=C+(d.y-B.y)*k;
@@ -3548,6 +3676,7 @@ function tick(now){
     updateVoyage(dt);
     updateCam(dt);
     updateTori(dt);
+    updateNpcs(dt);
     if(S.phase==='returning') updateReturn(dt);
     if(S.phase==='landing') updateLanding(dt);
     if(S.parts2.length) updateParts2(dt);

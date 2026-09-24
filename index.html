@@ -295,6 +295,14 @@
   .ptip[hidden]{display:none}
   .ptip b{display:block; font-size:.92em; color:#ffe9bd; font-weight:700; letter-spacing:.06em}
   .ptip em{display:block; font-style:normal; font-size:.72em; color:var(--mist); margin-top:.1em}
+  .rq{white-space:nowrap} .rq.ok{color:#6fae8e} .rq.ng{color:#ff8b6a} .rq.ahead{color:var(--dim)}
+  .punlock{position:absolute; left:50%; top:1em; transform:translate(-50%,-6px); opacity:0; pointer-events:none;
+    display:flex; gap:.6em; align-items:baseline; padding:.4em 1em; white-space:nowrap;
+    background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96)); border:1px solid var(--gold);
+    border-radius:2px; box-shadow:0 10px 24px -12px #000; transition:opacity .2s ease, transform .2s ease}
+  .punlock.on{opacity:1; transform:translate(-50%,0)}
+  .punlock b{color:var(--gold); font-size:.9em; letter-spacing:.1em}
+  .punlock span{color:var(--foam); font-size:.86em}
   .pshop{position:absolute; width:19em; max-height:60%; overflow:auto;
     padding:.5em; background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96));
     border:1px solid var(--line); border-radius:2px; box-shadow:0 18px 34px -18px #000}
@@ -414,6 +422,7 @@
         <div class="pmoney"><span>所持金</span><b class="num" id="pmoney">¥0</b></div>
       </div>
       <div class="ptip" id="ptip" hidden><b></b><em></em></div>
+      <div class="punlock" id="punlock"></div>
       <div class="pshop" id="pshop" hidden></div>
       <button class="pgo disp" id="pgo">出港</button>
     </div>
@@ -1110,16 +1119,20 @@ function bldg(g,x,yb,w,h,wall,roof,door){
   return top;
 }
 /* Lv0 は空き地。杭と縄と看板だけ立っていて、ここに何か建つと分かる */
-function emptyLot(g,P){
+function emptyLot(g,P,locked){
   const yb=P.sy+P.sh, x0=P.sx+3, x1=P.sx+P.sw-4, y0=yb-15;
   px(g,x0,y0,x1-x0,13,'#7d6f55');
   for(let x=x0;x<=x1;x+=2){ px(g,x,y0-1,1,1,'#c9b184'); px(g,x,yb-2,1,1,'#c9b184'); }
   for(const [x,y] of [[x0,y0-3],[x1,y0-3],[x0,yb-5],[x1,yb-5]]) px(g,x,y,1,4,'#5a3a1c');
   const sx=P.sx+(P.sw>>1);
   px(g,sx,yb-24,1,10,'#6b4a28'); px(g,sx-5,yb-27,11,6,'#e6dccb'); px(g,sx-4,yb-25,9,1,'#9c8f7a');
+  if(locked){                                        // まだ解放されていない
+    px(g,sx-2,yb-26,5,4,'#9c3a2c'); px(g,sx,yb-25,1,2,'#e6dccb');
+    px(g,sx-1,yb-29,3,1,'#6b6f73'); px(g,sx-2,yb-28,1,2,'#6b6f73'); px(g,sx+2,yb-28,1,2,'#6b6f73');
+  }
 }
 function drawFacility(g,id,lv,P,R){
-  if(lv<=0 && id!=='ship'){ emptyLot(g,P); return; }
+  if(lv<=0 && id!=='ship'){ emptyLot(g,P,!unlocked(id,1)); return; }
   if(id!=='ship') lv=Math.ceil(lv*5/FAC[id].max);      // 絵は5段階。Lv10なら2Lvごとに1段階進む
   const yb=P.sy+P.sh, x=P.sx+2;
   if(id==='gear'){                                   // 漁具工房
@@ -1558,6 +1571,44 @@ const FAC_EFF={
   fish:0.2,     // 水産加工場1段で売値が2割上がる。Lv10で3倍
   tank:0.28     // 燃料タンク1段で最大燃料が28%増える。Lv10で3.8倍
 };
+/* ================= アンロック =================
+   施設・Lvは「条件を満たす → 解放される → お金を払って建てる」の2段。解放にお金はかからない。
+   REQ[施設][Lv] がそのLvに上げるための条件で、次に条件が書かれたLvまでは同じ条件が続く。
+   {f:'engine',lv:2} は「整備場Lv2以上」、{pop:30} は「人口30人以上」。
+   造船所は島全体を育てないと上がらず、他の施設の上のほうは船を替えないと開かない */
+const REQ={
+  ship:  { 1:[{f:'engine',lv:2},{f:'gear',lv:2}],
+           2:[{f:'engine',lv:4},{f:'gear',lv:4},{f:'tank',lv:3}],
+           3:[{f:'engine',lv:6},{f:'gear',lv:6},{f:'tank',lv:6},{f:'fish',lv:5},{pop:80}],
+           4:[{f:'engine',lv:9},{f:'gear',lv:9},{f:'tank',lv:9},{f:'fish',lv:9}] },
+  engine:{ 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
+  gear:  { 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
+  tank:  { 4:[{f:'ship',lv:1}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] },
+  fish:  { 1:[{f:'gear',lv:2}], 4:[{f:'ship',lv:1},{pop:30}], 7:[{f:'ship',lv:2}], 9:[{f:'ship',lv:3}] }
+};
+function reqOf(id,L){                 // Lv L に上げるための条件（L以下で一番近く書かれたもの）
+  const t=REQ[id]; if(!t) return [];
+  let k=-1; for(const key in t) if(+key<=L && +key>k) k=+key;
+  return k<0 ? [] : t[k];
+}
+function condOk(c){ return c.pop ? population()>=c.pop : S.fac[c.f]>=c.lv; }
+const FAC_SHORT={engine:'整備', gear:'漁具', fish:'水産', tank:'燃料'};   // 条件を並べるときの短い名前
+function condText(c){
+  if(c.pop) return '人口'+c.pop;
+  return c.f==='ship' ? SHIP_NAME[c.lv] : FAC_SHORT[c.f]+'Lv'+c.lv;
+}
+function unlocked(id,L){ return reqOf(id,L).every(condOk); }
+/* 条件を ✓ / ✗ つきで並べる。足りないものだけ色を変える */
+function condHtml(list){
+  return list.map(c=>condOk(c) ? '<span class="rq ok">✓'+condText(c)+'</span>'
+                               : '<span class="rq ng">✗'+condText(c)+'</span>').join(' ');
+}
+/* いま次に上げられる段のうち、解放済みのものの集合（新しく開いたものを知らせるため） */
+function openSet(){
+  const a=new Set();
+  for(const id of FAC_IDS){ const L=S.fac[id]+1; if(L<=FAC[id].max && unlocked(id,L)) a.add(id+':'+L); }
+  return a;
+}
 const POP={base:2, perLv:3};   // 人口 = base + perLv × 施設Lvの合計。最初は2人、全部上げきると134人。
                                // 船に乗り切れない分はNPC船に回る
 
@@ -3473,7 +3524,7 @@ function showTip(sp){
   if(!sp){ elPTip.hidden=true; return; }
   const b=spotBox(sp);
   const lv=S.fac[sp.id], mx=FAC[sp.id].max;
-  elPTip.querySelector('b').textContent=FAC[sp.id].name+'  Lv'+lv+(lv>=mx?'（最大）':'');
+  elPTip.querySelector('b').textContent=FAC[sp.id].name+'  Lv'+lv+(lv>=mx?'（最大）':(unlocked(sp.id,lv+1)?'':' 🔒'));
   elPTip.querySelector('em').textContent=FAC[sp.id].note;
   elPTip.style.left=((b.x0+b.x1)/2/VW*100)+'%';
   elPTip.style.top=((b.y0-3)/VH*100)+'%';
@@ -3482,11 +3533,20 @@ function showTip(sp){
 /* 品書きは押した建物のすぐ横に出す。画面からはみ出さないよう寄せる */
 function placeShop(sp){
   const b=spotBox(sp);
-  const w=VW*0.40, h=VH*0.60;
+  const w=VW*0.40;
   let x=b.x1+10; if(x+w>VW-6) x=Math.max(6,b.x0-10-w);
-  let y=b.y0;    if(y+h>VH-6) y=Math.max(6,VH-6-h);
   elPShop.style.left=(x/VW*100)+'%';
-  elPShop.style.top=(y/VH*100)+'%';
+  /* 画面の下には出港ボタンと所持金の欄がある。下半分の建物は品書きを建物の上へ伸ばし、
+     上半分の建物は建物の高さから下へ伸ばして、出港ボタンの手前で止める */
+  const floor=VH*0.84;
+  if(b.y0>VH*0.5){
+    const bot=Math.min(b.y1, floor);
+    elPShop.style.top=''; elPShop.style.bottom=((VH-bot)/VH*100)+'%';
+    elPShop.style.maxHeight=((bot-6)/VH*100)+'%';
+  }else{
+    elPShop.style.bottom=''; elPShop.style.top=(b.y0/VH*100)+'%';
+    elPShop.style.maxHeight=((floor-b.y0)/VH*100)+'%';
+  }
 }
 function yen(n){ return '¥'+fmt(n); }
 
@@ -3502,12 +3562,20 @@ function paintPort(){
   const L=S.landed;
   elPLog.innerHTML=(L?('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>\n'):'')
     +'人口 <b>'+population()+'</b>人  乗船 <b>'+S.up.crew+'/'+stat.seats()+'</b>\n'
-    +'売値 <b>'+yen(fishYen())+'</b>/本  満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>';
+    +'売値 <b>'+yen(fishYen())+'</b>/本  満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>'
+    +nextShipLine();
   if(!shopOpen){ elPShop.hidden=true; return; }
   const sp=SPOTS.find(x=>x.id===shopOpen);
   if(sp) placeShop(sp);
   elPShop.hidden=false; elPShop.innerHTML='';
   paintFac(shopOpen);
+}
+/* 次に目指す船。造船所の上のほうは島全体を育てないと開かないので、何が足りないかを常に出す */
+function nextShipLine(){
+  const L=S.fac.ship+1; if(L>FAC.ship.max) return '';
+  return unlocked('ship',L)
+    ? '\n次の船 <b>'+SHIP_NAME[L]+'</b>  <em>'+yen(SHIPS[L].price)+'で建造できる</em>'
+    : '\n次の船 <b>'+SHIP_NAME[L]+'</b> 🔒\n'+condHtml(reqOf('ship',L));
 }
 function shopRow(icon,name,sub,price,ok,onClick){
   const b=document.createElement('button'); b.className='prow'; b.disabled=!ok;
@@ -3533,19 +3601,49 @@ function facEffect(id,lv){
   }
   return '';
 }
+function buyFac(id){
+  const before=openSet();
+  S.money-=facPrice(id); S.fac[id]++;
+  applyFac(); buildPort();
+  const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;      // 船が替わっても船着場に着けておく
+  S.fuel=fuelMax();
+  saveGame(); (id==='ship'?sfxChest:sfxPick)();
+  /* 建てた結果、新しく解放されたものを知らせる */
+  const fresh=[...openSet()].filter(k=>!before.has(k) && k!==id+':'+(S.fac[id]+1));
+  if(fresh.length) showUnlock(fresh.map(k=>{ const [fid,L]=k.split(':');
+    return fid==='ship' ? SHIP_NAME[+L] : FAC[fid].name+(+L===1?'':' Lv'+L); }));
+  paintPort();
+}
 function paintFac(id){
-  const f=FAC[id], lv=S.fac[id], maxed=lv>=f.max, price=facPrice(id);
-  const sub = maxed ? facEffect(id,lv)+'　これ以上は上げられない'
-            : facEffect(id,lv)+' → '+facEffect(id,lv+1)
-              +'<br>人口 '+population()+' → '+(population()+POP.perLv)+'人';
-  const ok=!maxed && S.money>=price;
-  shopRow(ICONS[id]||null, f.name+'　Lv'+lv+(maxed?'':' → '+(lv+1)), sub, maxed?'—':yen(price), ok, ()=>{
-    S.money-=price; S.fac[id]++;
-    applyFac(); buildPort();
-    const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;    // 船が替わっても船着場に着けておく
-    S.fuel=fuelMax();
-    saveGame(); (id==='ship'?sfxChest:sfxPick)(); paintPort();
-  });
+  const f=FAC[id], lv=S.fac[id];
+  if(id==='ship'){                                  // 造船所は残りの船を全部並べる。次の目標が見えるように
+    if(lv>=f.max){ shopRow(ICONS.ship, SHIP_NAME[lv], '乗員 '+SHIPS[lv].seats+'人　これ以上大きな船は無い', '—', false, ()=>{}); return; }
+    for(let L=lv+1; L<=f.max; L++){
+      const open=unlocked(id,L), next=L===lv+1, price=SHIPS[L].price;
+      let sub = next ? '乗員 '+SHIPS[L-1].seats+' → '+SHIPS[L].seats+'人' : '乗員 '+SHIPS[L].seats+'人';
+      if(!open) sub+='<br>'+condHtml(reqOf(id,L));
+      else if(!next) sub+='　'+SHIP_NAME[L-1]+'のあと';
+      shopRow(ICONS.ship, SHIP_NAME[L]+(open?'':' 🔒'), sub, yen(price), next&&open&&S.money>=price, ()=>buyFac(id));
+    }
+    return;
+  }
+  if(lv>=f.max){ shopRow(ICONS[id]||null, f.name+'　Lv'+lv, facEffect(id,lv)+'　これ以上は上げられない', '—', false, ()=>{}); return; }
+  const L=lv+1, open=unlocked(id,L), price=facPrice(id);
+  let sub=facEffect(id,lv)+' → '+facEffect(id,L)+'<br>人口 '+population()+' → '+(population()+POP.perLv)+'人';
+  if(!open) sub+='<br>'+condHtml(reqOf(id,L));
+  else{                                             // 解放済みなら、この先の関所を1つだけ見せる
+    let k=-1; for(const key in (REQ[id]||{})) if(+key>L && (k<0||+key<k)) k=+key;
+    if(k>0 && k<=f.max && !unlocked(id,k)) sub+='<br><span class="rq ahead">Lv'+k+'から：'+reqOf(id,k).map(condText).join(' / ')+'</span>';
+  }
+  shopRow(ICONS[id]||null, f.name+'　Lv'+lv+' → '+L+(open?'':' 🔒'), sub, yen(price), open&&S.money>=price, ()=>buyFac(id));
+}
+/* 解放の知らせ。港の画面の上に少しだけ出す */
+const elPUnlock=document.getElementById('punlock');
+function showUnlock(names){
+  elPUnlock.innerHTML='<b>🔓 解放</b>'+names.map(n=>'<span>'+n+'</span>').join('');
+  elPUnlock.classList.remove('on'); void elPUnlock.offsetWidth; elPUnlock.classList.add('on');
+  clearTimeout(showUnlock._t); showUnlock._t=setTimeout(()=>elPUnlock.classList.remove('on'),3200);
+  tone(988,.08,'triangle',.06,1.2); tone(1319,.12,'triangle',.06,1.2,.08);
 }
 /* 港では海面がそのまま操作盤になる。建物に合わせると名前が出て、押すと品書きが開く */
 frameEl.addEventListener('mousemove',e=>{

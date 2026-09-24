@@ -271,12 +271,16 @@
   .port{position:absolute; inset:0; pointer-events:none; z-index:4}
   .port[hidden]{display:none}
   .port>*{pointer-events:auto}
-  .pmoney{position:absolute; left:1em; top:1em; display:flex; align-items:baseline; gap:.5em;
+  /* 所持金と水揚げ・人口の欄。左上だと島に被るので、桟橋と船の下の空いた海（右下）に寄せる */
+  .pinfo{position:absolute; right:1em; bottom:1em; display:flex; flex-direction:column;
+    align-items:flex-end; gap:.35em}
+  .pmoney{display:flex; align-items:baseline; gap:.5em;
     padding:.35em .9em .4em; background:linear-gradient(180deg,rgba(10,31,46,.94),rgba(6,22,34,.94));
-    border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:2px}
+    border:1px solid var(--line); border-right:3px solid var(--gold); border-radius:2px}
   .pmoney span{font-size:.68em; letter-spacing:.22em; color:var(--dim)}
   .pmoney b{font-size:1.5em; color:var(--gold); font-weight:700}
-  .plog{position:absolute; left:1em; top:3.9em; font-size:.74em; line-height:1.7; color:var(--mist);
+  .plog{font-size:.74em; line-height:1.7; color:var(--mist); text-align:right;
+    padding:.3em .8em; background:rgba(6,22,34,.72); border-radius:2px;
     font-family:"M PLUS 1 Code",ui-monospace,monospace; white-space:pre; text-shadow:0 1px 2px #000}
   .plog b{color:var(--foam)} .plog em{font-style:normal; color:var(--gold)}
   .plog u{text-decoration:none; color:#ff8b6a}
@@ -403,8 +407,10 @@
     </div>
 
     <div class="port" id="port" hidden>
-      <div class="pmoney"><span>所持金</span><b class="num" id="pmoney">¥0</b></div>
-      <div class="plog" id="plog"></div>
+      <div class="pinfo">
+        <div class="plog" id="plog"></div>
+        <div class="pmoney"><span>所持金</span><b class="num" id="pmoney">¥0</b></div>
+      </div>
       <div class="ptip" id="ptip" hidden><b></b><em></em></div>
       <div class="pshop" id="pshop" hidden></div>
       <button class="pgo disp" id="pgo">出港</button>
@@ -3400,7 +3406,7 @@ frameEl.addEventListener('mouseleave',()=>{ hoverSpot=null; showTip(null); frame
 frameEl.addEventListener('click',e=>{
   if(S.phase==='landing'){ finishLanding(); return; }   // 見飽きたら飛ばせる
   if(S.phase!=='port') return;
-  if(e.target.closest && e.target.closest('.pshop,.pgo,.pmoney,.mute')) return;
+  if(e.target.closest && e.target.closest('.pshop,.pgo,.pinfo,.mute')) return;
   const p=toLocal(e), sp=spotAt(p.x,p.y);
   if(!sp){ if(shopOpen){ shopOpen=null; paintPort(); } return; }
   shopOpen = shopOpen===sp.id ? null : sp.id;

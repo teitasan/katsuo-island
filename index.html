@@ -1120,6 +1120,7 @@ function emptyLot(g,P){
 }
 function drawFacility(g,id,lv,P,R){
   if(lv<=0 && id!=='ship'){ emptyLot(g,P); return; }
+  if(id!=='ship') lv=Math.ceil(lv*5/FAC[id].max);      // 絵は5段階。Lv10なら2Lvごとに1段階進む
   const yb=P.sy+P.sh, x=P.sx+2;
   if(id==='gear'){                                   // 漁具工房
     const [w,h]=[[0,0],[22,14],[30,18],[38,22],[44,26],[48,30]][lv];
@@ -1319,10 +1320,10 @@ function buildSea(){
    lv はチップを点灯させるかどうかにだけ使う */
 const UPG=[
   {id:'crew',   max:99, lv:()=>S.up.crew,     apply:()=>{}},
-  {id:'rate',   max:5,  lv:()=>S.fac.gear,    apply:()=>{}},
-  {id:'engine', max:5,  lv:()=>S.fac.engine,  apply:()=>{}},
-  {id:'fish',   max:5,  lv:()=>S.fac.fish,    apply:()=>{}},
-  {id:'tank',   max:5,  lv:()=>S.fac.tank,    apply:()=>{}}
+  {id:'rate',   max:10, lv:()=>S.fac.gear,    apply:()=>{}},
+  {id:'engine', max:10, lv:()=>S.fac.engine,  apply:()=>{}},
+  {id:'fish',   max:10, lv:()=>S.fac.fish,    apply:()=>{}},
+  {id:'tank',   max:10, lv:()=>S.fac.tank,    apply:()=>{}}
 ];
 const UPG_BY={}; UPG.forEach(u=>UPG_BY[u.id]=u);
 const UPG_IDS=[...new Set(UPG.map(u=>u.id))];   // 表示はこちら。プールは漁師が3枚あるため
@@ -1544,18 +1545,20 @@ const SHIPS=[
 const FAC_IDS=['ship','engine','gear','fish','tank'];
 const FAC={
   ship:  {name:'造船所',     note:'船を大きくする',   max:4},   // Lv がそのまま SHIPS の番号。値段は SHIPS.price
-  engine:{name:'整備場',     note:'船の足を速くする', max:5, price:[8000,32000,128000,512000,2000000]},
-  gear:  {name:'漁具工房',   note:'竿を増やす',       max:5, price:[10000,40000,160000,640000,2500000]},
-  fish:  {name:'水産加工場', note:'カツオを高く売る', max:5, price:[12000,48000,190000,760000,3000000]},
-  tank:  {name:'燃料タンク', note:'遠くまで行ける',   max:5, price:[6000,24000,96000,380000,1500000]}
+  /* 残りの4つは Lv0〜10。値段は1段ごとに約2倍で、2段が以前の1段ぶんにあたる。
+     上げきるまでの合計額は Lv5 までだったときと同じ */
+  engine:{name:'整備場',     note:'船の足を速くする', max:10, price:[2600,5200,10000,21000,42000,84000,170000,340000,670000,1300000]},
+  gear:  {name:'漁具工房',   note:'竿を増やす',       max:10, price:[3300,6500,13000,26000,52000,100000,210000,420000,840000,1700000]},
+  fish:  {name:'水産加工場', note:'カツオを高く売る', max:10, price:[3900,7800,16000,31000,63000,130000,250000,500000,1000000,2000000]},
+  tank:  {name:'燃料タンク', note:'遠くまで行ける',   max:10, price:[2000,3900,7800,16000,31000,63000,130000,250000,500000,1000000]}
 };
 const FAC_EFF={
-  engine:2,     // 整備場1段 = 機関2段ぶん（機関1段で速さ×1.12）。Lv5で以前の機関Lv10と同じ
-  gear:0.4,     // 漁具工房1段で、漁師1人あたりの竿が0.4本増える。Lv5で全員が3本持ち（持てる上限）
-  fish:0.4,     // 水産加工場1段で売値が4割上がる。Lv5で3倍
-  tank:0.56     // 燃料タンク1段で最大燃料が56%増える。Lv5で以前のタンクLv8と同じ3.8倍
+  engine:1,     // 整備場1段 = 機関1段（速さ×1.12）。Lv10で以前の機関Lv10と同じ
+  gear:0.2,     // 漁具工房1段で、漁師1人あたりの竿が0.2本増える。Lv10で全員が3本持ち（持てる上限）
+  fish:0.2,     // 水産加工場1段で売値が2割上がる。Lv10で3倍
+  tank:0.28     // 燃料タンク1段で最大燃料が28%増える。Lv10で3.8倍
 };
-const POP={base:2, perLv:6};   // 人口 = base + perLv × 施設Lvの合計。最初は2人、全部上げきると146人。
+const POP={base:2, perLv:3};   // 人口 = base + perLv × 施設Lvの合計。最初は2人、全部上げきると134人。
                                // 船に乗り切れない分はNPC船に回る
 
 function ship(){ return SHIPS[S.shipIdx]; }
@@ -3566,16 +3569,17 @@ document.getElementById('pgo').addEventListener('click',departPort);
 /* ================= セーブ ================= */
 const SAVE_KEY='island.save';
 function saveGame(){
-  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({v:2, money:S.money, voyage:S.voyage, fac:S.fac})); }catch(e){}
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify({v:3, money:S.money, voyage:S.voyage, fac:S.fac})); }catch(e){}
 }
 function loadGame(){
   let d=null;
   try{ d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); }catch(e){}
   if(!d) return false;
   S.money=d.money|0; S.voyage=d.voyage|0;
-  const f = d.fac || {                          // 旧版（ひとつずつ買う方式）のセーブを施設Lvへ移す
+  const f = Object.assign({}, d.fac || {         // 旧版（ひとつずつ買う方式）のセーブを施設Lvへ移す
     ship:d.ship|0, engine:Math.round((d.engine|0)/2), gear:Math.round((d.rate|0)/2),
-    fish:0, tank:Math.round((d.tank|0)*5/8) };
+    fish:0, tank:Math.round((d.tank|0)*5/8) });
+  if(!(d.v>=3)) for(const id of FAC_IDS) if(id!=='ship') f[id]=(f[id]|0)*2;   // Lv5までだった頃のセーブは2倍
   for(const id of FAC_IDS) S.fac[id]=clamp(f[id]|0, 0, FAC[id].max);
   return true;
 }

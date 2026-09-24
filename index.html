@@ -169,6 +169,8 @@
   .toast .it{font-size:.85em; color:var(--foam); background:rgba(3,18,29,.7); padding:.15em .7em; border:1px solid var(--line)}
 
   /* ---- overlays ---- */
+  #menu{z-index:8}
+  .mbtn.armed{border-color:#ff8b6a; color:#ff8b6a}
   .scrim{position:absolute; inset:0; display:none; place-items:center; padding:1.5em; cursor:default;
     background:radial-gradient(120% 90% at 50% 40%, rgba(4,26,42,.86), rgba(2,12,20,.95));
     -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px); pointer-events:auto}
@@ -422,6 +424,7 @@
         <div class="mrow">
           <button class="mbtn" id="mHome">港へ戻る</button>
           <button class="mbtn" id="mSound">音<b id="mSoundV">ON</b></button>
+          <button class="mbtn" id="mReset">最初から</button>
           <button class="mbtn" id="mClose">閉じる</button>
         </div>
         <div class="mnote" id="lblMenuNote">Esc</div>
@@ -486,7 +489,7 @@ ja:{
  'rank.6':'伝説の竿頭','rank.6.fl':'この海の話は語り草になる。',
  'res.grow':'漁獲力 {a} → {b} 本/秒','res.growX':'×{c}','res.newbest':'自己ベスト更新',
  'res.from':'{v} から','res.retry':'もう一度','res.best':'自己ベスト {n}本',
- 'menu.head':'キュウケイ','menu.sound':'音','menu.on':'ON','menu.off':'OFF','menu.retry':'やり直す','menu.close':'閉じる',
+ 'menu.head':'キュウケイ','menu.sound':'音','menu.on':'ON','menu.off':'OFF','menu.retry':'やり直す','menu.close':'閉じる','menu.home':'港へ戻る','menu.reset':'最初から','menu.resetSure':'もう一度押すと消える',
  'menu.gear':'漁法','gear.pole':'一本釣り','gear.seine':'巻き網','gear.trawl':'曳き網'
 },
 en:{
@@ -518,7 +521,7 @@ en:{
  'rank.6':'Legendary Top Rod','rank.6.fl':"They'll tell stories about this trip.",
  'res.grow':'RATE {a} → {b} fish/s','res.growX':'×{c}','res.newbest':'NEW BEST',
  'res.from':'from {v}','res.retry':'ONE MORE','res.best':'BEST {n}',
- 'menu.head':'PAUSED','menu.sound':'Sound','menu.on':'ON','menu.off':'OFF','menu.retry':'RESTART','menu.close':'CLOSE',
+ 'menu.head':'PAUSED','menu.sound':'Sound','menu.on':'ON','menu.off':'OFF','menu.retry':'RESTART','menu.close':'CLOSE','menu.home':'BACK TO PORT','menu.reset':'NEW GAME','menu.resetSure':'PRESS AGAIN TO ERASE',
  'menu.gear':'Gear','gear.pole':'Pole','gear.seine':'Seine','gear.trawl':'Trawl'
 }};
 let LANG='ja';                 // Playables では SDK の getLanguage で決める
@@ -3398,7 +3401,7 @@ function paintFac(id){
 }
 /* 港では海面がそのまま操作盤になる。建物に合わせると名前が出て、押すと品書きが開く */
 frameEl.addEventListener('mousemove',e=>{
-  if(S.phase!=='port'){ if(hoverSpot){ hoverSpot=null; showTip(null); } return; }
+  if(S.phase!=='port' || S.menu){ if(hoverSpot){ hoverSpot=null; showTip(null); frameEl.style.cursor=''; } return; }
   const p=toLocal(e), sp=spotAt(p.x,p.y);
   if(sp!==hoverSpot){ hoverSpot=sp; showTip(sp); frameEl.style.cursor=sp?'pointer':''; }
 });
@@ -3406,7 +3409,8 @@ frameEl.addEventListener('mouseleave',()=>{ hoverSpot=null; showTip(null); frame
 frameEl.addEventListener('click',e=>{
   if(S.phase==='landing'){ finishLanding(); return; }   // 見飽きたら飛ばせる
   if(S.phase!=='port') return;
-  if(e.target.closest && e.target.closest('.pshop,.pgo,.pinfo,.mute')) return;
+  if(S.menu) return;
+  if(e.target.closest && e.target.closest('.pshop,.pgo,.pinfo,.mute,.scrim')) return;
   const p=toLocal(e), sp=spotAt(p.x,p.y);
   if(!sp){ if(shopOpen){ shopOpen=null; paintPort(); } return; }
   shopOpen = shopOpen===sp.id ? null : sp.id;
@@ -3439,10 +3443,39 @@ function paintSound(){
   document.getElementById('mSound').classList.toggle('off', muted);
 }
 function openMenu(v){
-  if(S.phase!=='sea') return;
+  if(S.phase!=='sea' && S.phase!=='port') return;
   S.menu=v;
   scrMenu.classList.toggle('on', v);
+  disarmReset();
+  document.getElementById('mHome').hidden = S.phase!=='sea';
   if(v){ paintSound(); paintGear(); document.getElementById('mSound').focus({preventScroll:true}); }
+}
+/* 最初から。進行が全部消えるので、1回目は押しかけの状態にして、3秒以内にもう一度押したときだけ消す */
+const mReset=document.getElementById('mReset');
+let resetArmed=0;
+function disarmReset(){ resetArmed=0; clearTimeout(disarmReset._t); mReset.classList.remove('armed'); mReset.textContent=t('menu.reset'); }
+mReset.addEventListener('click',e=>{
+  e.stopPropagation();
+  if(!resetArmed){
+    resetArmed=1; mReset.classList.add('armed'); mReset.textContent=t('menu.resetSure');
+    clearTimeout(disarmReset._t); disarmReset._t=setTimeout(disarmReset,3000);
+    return;
+  }
+  resetAll();
+});
+function resetAll(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  S.money=0; S.voyage=0; S.landed=null;
+  for(const id of FAC_IDS) S.fac[id]=0;
+  S.fever=false; S.fvT=0; S.fvRound=0; S.fvLock=0; S.burst=null; S.shake=0;
+  S.phase='port';
+  applyFac(); buildPort();
+  reset();                                     // 海と船の状態を仕切り直し、船を船着場へ
+  S.mode='play'; S.started=true; S.camK=1;
+  elHaul.classList.remove('on'); elHaul.textContent='';
+  openMenu(false);
+  showPort();
+  saveGame();
 }
 muteBtn.addEventListener('click',e=>{ e.stopPropagation(); audioInit(); openMenu(!S.menu); });
 const elHaul=document.getElementById('haul');
@@ -3453,7 +3486,7 @@ document.getElementById('mClose').addEventListener('click',()=>openMenu(false));
 window.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
   e.preventDefault();
-  if(S.phase==='sea') openMenu(!S.menu);
+  if(S.phase==='sea'||S.phase==='port') openMenu(!S.menu);
 });
 
 /* ================= 負荷計測（Fキーで開閉） ================= */
@@ -3538,7 +3571,7 @@ function applyLang(){
   set('fvlabel','hud.fever'); set('fvbig','hud.fever');
   elFvRound.textContent=t('hud.round',{n:Math.max(1,S.fvRound)});
   set('lblPickEyebrow','pick.eyebrow'); set('lblPickHead','pick.head'); set('lblResHead','res.head');
-  set('lblMenu','menu.head'); set('mClose','menu.close');
+  set('lblMenu','menu.head'); set('mClose','menu.close'); set('mHome','menu.home'); set('mReset','menu.reset');
   document.getElementById('mSound').firstChild.nodeValue=t('menu.sound');
   paintSound(); paintGear();
   document.querySelectorAll('#stats .chip b[data-k]').forEach(b=>{ b.textContent=t(b.dataset.k); });

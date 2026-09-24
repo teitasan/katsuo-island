@@ -303,6 +303,7 @@
   .punlock.on{opacity:1; transform:translate(-50%,0)}
   .punlock b{color:var(--gold); font-size:.9em; letter-spacing:.1em}
   .punlock span{color:var(--foam); font-size:.86em}
+  .punlock .newship{color:var(--gold); font-size:1.1em; letter-spacing:.06em}
   .pshop{position:absolute; width:19em; max-height:60%; overflow:auto;
     padding:.5em; background:linear-gradient(180deg,rgba(10,31,46,.96),rgba(6,22,34,.96));
     border:1px solid var(--line); border-radius:2px; box-shadow:0 18px 34px -18px #000}
@@ -1593,7 +1594,7 @@ function condOk(c){ return c.pop ? population()>=c.pop : S.fac[c.f]>=c.lv; }
 const FAC_SHORT={engine:'整備', gear:'漁具', fish:'水産', tank:'燃料'};   // 条件を並べるときの短い名前
 function condText(c){
   if(c.pop) return '人口'+c.pop;
-  return c.f==='ship' ? SHIP_NAME[c.lv] : FAC_SHORT[c.f]+'Lv'+c.lv;
+  return c.f==='ship' ? shipLabel(c.lv) : FAC_SHORT[c.f]+'Lv'+c.lv;
 }
 function unlocked(id,L){ return reqOf(id,L).every(condOk); }
 /* 条件を ✓ / ✗ つきで並べる。足りないものだけ色を変える */
@@ -3556,6 +3557,7 @@ function hidePort(){ elPort.hidden=true; hud.classList.add('on');
   hoverSpot=null; showTip(null); frameEl.style.cursor=''; }
 
 function paintPort(){
+  revealShips();
   elPMoney.textContent=yen(S.money);
   const L=S.landed;
   elPLog.innerHTML=(L?('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>\n'):'')
@@ -3568,12 +3570,30 @@ function paintPort(){
   elPShop.hidden=false; elPShop.innerHTML='';
   paintFac(shopOpen);
 }
+/* 船の正体は、次に建てられる船として解放されるまで「？？？」にしておく。
+   解放の知らせで初めて名前が出る。一度見た船は覚えておき、「最初から」でも忘れない
+   （秘密にするのは初回だけ）。セーブとは別の場所にしまう */
+const SEEN_KEY='island.seen';
+const seenShips=new Set([0]);
+try{ for(const i of JSON.parse(localStorage.getItem(SEEN_KEY)||'[]')) seenShips.add(i|0); }catch(e){}
+function markSeen(i){
+  if(seenShips.has(i)) return;
+  seenShips.add(i);
+  try{ localStorage.setItem(SEEN_KEY, JSON.stringify([...seenShips])); }catch(e){}
+}
+/* 持っている船と、次に建てられる（解放済みの）船だけを明かす。その先は条件を満たしていても伏せる */
+function revealShips(){
+  for(let i=0;i<=S.fac.ship;i++) markSeen(i);
+  const L=S.fac.ship+1;
+  if(L<=FAC.ship.max && unlocked('ship',L)) markSeen(L);
+}
+function shipLabel(i){ return seenShips.has(i) ? SHIP_NAME[i] : '？？？'; }
 /* 次に目指す船。造船所の上のほうは島全体を育てないと開かないので、何が足りないかを常に出す */
 function nextShipLine(){
   const L=S.fac.ship+1; if(L>FAC.ship.max) return '';
   return unlocked('ship',L)
-    ? '\n次の船 <b>'+SHIP_NAME[L]+'</b>  <em>'+yen(SHIPS[L].price)+'で建造できる</em>'
-    : '\n次の船 <b>'+SHIP_NAME[L]+'</b> 🔒\n'+condHtml(reqOf('ship',L));
+    ? '\n次の船 <b>'+shipLabel(L)+'</b>  <em>'+yen(SHIPS[L].price)+'で建造できる</em>'
+    : '\n次の船 <b>'+shipLabel(L)+'</b> 🔒\n'+condHtml(reqOf('ship',L));
 }
 function shopRow(icon,name,sub,price,ok,onClick){
   const b=document.createElement('button'); b.className='prow'; b.disabled=!ok;
@@ -3591,7 +3611,7 @@ function shopRow(icon,name,sub,price,ok,onClick){
 /* その Lv のときの能力を、読める言葉で */
 function facEffect(id,lv){
   switch(id){
-    case 'ship':   return SHIP_NAME[lv]+'（乗員 '+SHIPS[lv].seats+'人）';
+    case 'ship':   return shipLabel(lv)+'（乗員 '+(seenShips.has(lv)?SHIPS[lv].seats:'？？')+'人）';
     case 'engine': return (stat.speed({engine:lv*FAC_EFF.engine})*0.25).toFixed(1)+'ノット';
     case 'gear':   return '竿 1人 '+String(+(1+FAC_EFF.gear*lv).toFixed(1))+'本';
     case 'fish':   return yen(fishYen(lv))+'/本';
@@ -3606,10 +3626,12 @@ function buyFac(id){
   const d=dockPos(); S.boat.x=d.x; S.boat.y=d.y;      // 船が替わっても船着場に着けておく
   S.fuel=fuelMax();
   saveGame(); (id==='ship'?sfxChest:sfxPick)();
-  /* 建てた結果、新しく解放されたものを知らせる */
-  const fresh=[...openSet()].filter(k=>!before.has(k) && k!==id+':'+(S.fac[id]+1));
+  /* 建てた結果、新しく解放されたものを知らせる。数えるのは条件の書かれた段（Lv4・7・9、船など）が
+     開いたときだけ。その次のLvは同じ条件を引き継いでいるだけなので知らせない */
+  const fresh=[...openSet()].filter(k=>{ const [fid,L]=k.split(':'); return !before.has(k) && !!(REQ[fid]&&REQ[fid][+L]); });
+  revealShips();
   if(fresh.length) showUnlock(fresh.map(k=>{ const [fid,L]=k.split(':');
-    return fid==='ship' ? SHIP_NAME[+L] : FAC[fid].name+(+L===1?'':' Lv'+L); }));
+    return fid==='ship' ? '<b class="newship">'+SHIP_NAME[+L]+'</b>' : FAC[fid].name+(+L===1?'':' Lv'+L); }));
   paintPort();
 }
 function paintFac(id){
@@ -3618,10 +3640,11 @@ function paintFac(id){
     if(lv>=f.max){ shopRow(ICONS.ship, SHIP_NAME[lv], '乗員 '+SHIPS[lv].seats+'人　これ以上大きな船は無い', '—', false, ()=>{}); return; }
     for(let L=lv+1; L<=f.max; L++){
       const open=unlocked(id,L), next=L===lv+1, price=SHIPS[L].price;
-      let sub = next ? '乗員 '+SHIPS[L-1].seats+' → '+SHIPS[L].seats+'人' : '乗員 '+SHIPS[L].seats+'人';
+      const known=seenShips.has(L), seats=known?SHIPS[L].seats:'？？';
+      let sub = next ? '乗員 '+SHIPS[L-1].seats+' → '+seats+'人' : '乗員 '+seats+'人';
       if(!open) sub+='<br>'+condHtml(reqOf(id,L));
-      else if(!next) sub+='　'+SHIP_NAME[L-1]+'のあと';
-      shopRow(ICONS.ship, SHIP_NAME[L]+(open?'':' 🔒'), sub, yen(price), next&&open&&S.money>=price, ()=>buyFac(id));
+      else if(!next) sub+='　'+shipLabel(L-1)+'のあと';
+      shopRow(ICONS.ship, shipLabel(L)+(open?'':' 🔒'), sub, yen(price), next&&open&&S.money>=price, ()=>buyFac(id));
     }
     return;
   }

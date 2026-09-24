@@ -2335,16 +2335,20 @@ function departPort(){
 }
 
 /* ================= NPC漁船 =================
-   自分の船に乗り切れない住民が、木造の小舟・漁船・大型漁船に適当に分乗して、
+   自分の船に乗り切れない住民が、自分が乗り換える前の段階の船（木造の小舟・漁船・大型漁船）に
+   適当に分乗して、
    それぞれ港を中心とした輪の中を勝手に回って漁をする。
    魚の群れは自分の船のまわりにしか居ないので、NPC船の漁獲は群れを見ず、
    「乗っている人数 × その場所の海の濃さ」から毎秒いくらで出す。
    漁をするのは自分が航海に出ているあいだだけで、獲ったぶんは自分の積荷に入る */
 const NPC={
-  types:[                         // art は船の絵、ring は港からの距離（内側〜外側 px）
-    {art:6, seats:8,  ring:[340,1200], speed:34},   // 木造の小舟
-    {art:3, seats:18, ring:[600,2400], speed:40},   // 漁船
-    {art:5, seats:32, ring:[900,4000], speed:46}    // 大型漁船
+  /* art は船の絵、ring は港からの距離（内側〜外側 px）。
+     stage は造船所のLv。自分がそれより大きい船に乗り換えたら、その船がNPCに回る。
+     タイタニックと大和はNPCにしない */
+  types:[
+    {stage:0, art:6, seats:8,  ring:[340,1200], speed:34},   // 木造の小舟
+    {stage:1, art:3, seats:18, ring:[600,2400], speed:40},   // 漁船
+    {stage:2, art:5, seats:32, ring:[900,4000], speed:46}    // 大型漁船
   ],
   fill:[0.6,1.0],     // 1隻にどれだけ乗せるか（席に対する割合）。この幅でばらつかせる
   max:10,             // NPC船の上限。住民が余りすぎてもこれ以上は出さない
@@ -2356,11 +2360,19 @@ const NPC={
 /* 住民の余りから船団を組み直す。施設を上げたときと読み込んだときに呼ぶ */
 function buildFleet(){
   const surplus=Math.max(0, population()-S.up.crew);
+  const avail=NPC.types.filter(t=>t.stage<S.fac.ship);      // 乗り換える前の段階の船だけ
   const R=seeded(surplus*7919+S.fac.ship*31+1);
-  const out=[]; let left=surplus;
+  const out=[]; let left=avail.length?surplus:0;
+  /* 1隻目は乗り換える直前の船（大型漁船まで）。席の6割に満たない人数でもそれに乗せる。
+     「乗り換えたら前の船が島の人に回る」が必ず見えるように */
+  if(left>0){
+    const T=avail[avail.length-1];
+    const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
+    out.push(makeNpc(T,n,R)); left-=n;
+  }
   while(left>0 && out.length<NPC.max){
-    const fit=NPC.types.filter(t=>t.seats*NPC.fill[0]<=left);
-    const pool=fit.length?fit:[NPC.types[0]];
+    const fit=avail.filter(t=>t.seats*NPC.fill[0]<=left);
+    const pool=fit.length?fit:[avail[0]];
     const T=pool[Math.floor(R()*pool.length)];
     const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
     out.push(makeNpc(T,n,R)); left-=n;

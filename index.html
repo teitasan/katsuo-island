@@ -1643,7 +1643,8 @@ function seaRich(){ return seaRichAt(S.boat.x, S.boat.y); }
 /* 上の倍率を 0〜1 に直したもの。群れの数や密度など、青天井にしたくないものに使う */
 function seaT(){ return Math.log2(seaRich())/Math.log2(SEA.richCap); }
 
-const SHIP_SPD_DROP=0.04, SHIP_TURN_DROP=0.06;   // 小舟1.00 → 漁船0.92/0.88 → 大型0.84/0.76 → タイタニック0.80/0.70 → 大和0.76/0.64
+const SHIP_SPD_DROP=0.02, SHIP_TURN_DROP=0.04;   // 速さ/旋回の倍率 小舟1.00 → 漁船0.96/0.92 → 大型0.92/0.84 → タイタニック0.90/0.80 → 大和0.88/0.76
+                                                // 重さは出すが爽快感を削らない程度に留める
 const stat = {
   rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
   /* 大きい船ほど最高速も旋回も少しずつ落ちる（格1段ごとに SHIP_SPD_DROP / SHIP_TURN_DROP） */

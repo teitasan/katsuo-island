@@ -1356,7 +1356,7 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
-  land:null, parts2:[], toriT:20, ret:null, npcs:[], npcFish:0,
+  land:null, parts2:[], toriT:20, ret:null, npcs:[], npcFish:0, npcYen:0,
   fac:{ship:0, engine:0, gear:0, fish:0, tank:0},
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
@@ -1835,9 +1835,25 @@ function spawnToriBoil(dt){
     }
   }
 }
+/* ax,ay のまわりに群れを1つ湧かせる。濃さはその場所の港からの距離で決まる */
+function spawnSchoolNear(ax,ay){
+  const rich=seaRichAt(ax,ay), p=Math.log2(rich)/Math.log2(SEA.richCap);
+  const n=Math.round(rnd(50,150)*rich*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
+  // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
+  // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
+  const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);
+  const sxw=ax+Math.cos(a)*d, syw=ay+Math.sin(a)*d;
+  if(Math.hypot(sxw-PORT.x,syw-PORT.y)<SEA.portClear+schoolRadius(n)) return;   // 港の足元は空
+  const sc=makeSchool(sxw, syw, n);
+  sc.rx*=1-(1-SEA.tightMax)*p; sc.ry*=1-(1-SEA.tightMax)*p;   // 沖ほど密＝漁獲効率
+  S.schools.push(sc); S.totalFish+=n;
+}
 function manageWorld(dt){
-  const B=S.boat, rich=seaRich(), p=seaT();   // 時間ではなく港からの距離。遠いほど濃い海になる
+  const B=S.boat, p=seaT();   // 時間ではなく港からの距離。遠いほど濃い海になる
   const target=Math.round(14*(1+(SEA.countMax-1)*p)), DESP=1000;
+  /* 群れを保つ場所：自分の船と、海に出ているNPC船 */
+  const anchors=[[B.x,B.y]];
+  if(S.phase==='sea') for(const nb of S.npcs) if(nb.state!=='dock') anchors.push([nb.x,nb.y]);
   for(let i=S.schools.length-1;i>=0;i--){
     const s=S.schools[i];
     /* 港へ入り込んだ群れは片づけるが、消すのは画面の外にいるときだけ。
@@ -1845,22 +1861,16 @@ function manageWorld(dt){
     const cm=camPos();
     const offScreen = Math.abs(s.cx-cm.x)>VW/2+s.rx*s.k+24 || Math.abs(s.cy-cm.y)>VH/2+s.ry*s.k+24;
     const inPort = Math.hypot(s.cx-PORT.x,s.cy-PORT.y)<SEA.portClear*0.8;
-    if(s.alive<=0 || (inPort&&offScreen) || Math.hypot(s.cx-B.x,s.cy-B.y)>DESP){
-      S.totalFish-=s.alive; S.schools.splice(i,1); }
+    let far=true; for(const [ax,ay] of anchors) if(Math.hypot(s.cx-ax,s.cy-ay)<=DESP){ far=false; break; }
+    if(s.alive<=0 || (inPort&&offScreen) || far){ S.totalFish-=s.alive; S.schools.splice(i,1); }
   }
-  let guard=0;
+  const near=(ax,ay,r)=>{ let n=0, f=0; for(const s of S.schools) if(Math.hypot(s.cx-ax,s.cy-ay)<r){ n++; f+=s.alive; } return [n,f]; };
   const cap=20000*(1+TUNE.lureSchoolSize*(S.up.lure-1));  // 終盤は海を埋める。集魚のぶん更に上げる
-  while(S.schools.length<target && S.totalFish<cap && guard++<6){
-    const n=Math.round(rnd(50,150)*rich*(1+TUNE.lureSchoolSize*(S.up.lure-1)));  // 隠し効果：集魚で群れが大きくなる
-    // 湧き距離は群れの中心ではなく「手前側の縁」で測る。
-    // 半径を足さないと、大きい群れほど画面の中に身体がはみ出して出現する
-    const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);
-    const sxw=B.x+Math.cos(a)*d, syw=B.y+Math.sin(a)*d;
-    if(Math.hypot(sxw-PORT.x,syw-PORT.y)<SEA.portClear+schoolRadius(n)) continue;   // 港の足元は空
-    const sc=makeSchool(sxw, syw, n);
-    sc.rx*=1-(1-SEA.tightMax)*p; sc.ry*=1-(1-SEA.tightMax)*p;   // 沖ほど密＝漁獲効率
-    S.schools.push(sc);
-    S.totalFish+=n;
+  { let guard=0, [n,f]=near(B.x,B.y,DESP);
+    while(n<target && f<cap && guard++<6){ const before=S.schools.length; spawnSchoolNear(B.x,B.y); if(S.schools.length>before){ n++; f+=S.schools[S.schools.length-1].alive; } } }
+  for(let k=1;k<anchors.length;k++){                       // NPC船のまわりは少なめ
+    const [ax,ay]=anchors[k]; let [n]=near(ax,ay,900), guard=0;
+    while(n<NPC.schools && guard++<3){ const before=S.schools.length; spawnSchoolNear(ax,ay); if(S.schools.length>before) n++; }
   }
   if(S.mode!=='play' || !S.started) return;
   S.chestT-=dt;
@@ -2390,6 +2400,7 @@ function departPort(){
   if(S.phase!=='port') return;
   hidePort();
   S.voyage++;
+  S.npcYen=0;
   S.phase='departing';
   S.toriT=rnd(TORI.first[0],TORI.first[1]);
   S.landed=null;
@@ -2399,111 +2410,165 @@ function departPort(){
 
 /* ================= NPC漁船 =================
    自分の船に乗り切れない住民が、自分が乗り換える前の段階の船（木造の小舟・漁船・大型漁船）に
-   適当に分乗して、
-   それぞれ港を中心とした輪の中を勝手に回って漁をする。
-   魚の群れは自分の船のまわりにしか居ないので、NPC船の漁獲は群れを見ず、
-   「乗っている人数 × その場所の海の濃さ」から毎秒いくらで出す。
-   漁をするのは自分が航海に出ているあいだだけで、獲ったぶんは自分の積荷に入る */
+   適当に分乗して漁に出る。港の東の停泊位置から出港し、持ち場（港からの輪）の中で群れを探して
+   追いかけ、自分の船と同じ判定で釣る。船倉が満杯になるか、帰る分の燃料しか残らなくなったら
+   港へ戻って売り（所持金に入る）、給油して少し休んでまた出る。
+   群れは船のまわりにしか湧かないので、NPC船のまわりにも少しだけ群れを湧かせる（manageWorld）。
+   港で待っている間に稼がないよう、NPC船が動くのは自分が航海に出ているあいだだけ */
 const NPC={
-  /* art は船の絵、ring は港からの距離（内側〜外側 px）。
-     stage は造船所のLv。自分がそれより大きい船に乗り換えたら、その船がNPCに回る。
-     タイタニックと大和はNPCにしない */
+  /* art は船の絵、ring は持ち場（港からの距離 px）、hold は船倉、fuel は航続（px）。
+     stage は造船所のLv。自分がそれより大きい船に乗り換えたら、その船がNPCに回る */
   types:[
-    {stage:0, art:6, seats:8,  ring:[340,1200], speed:34},   // 木造の小舟
-    {stage:1, art:3, seats:18, ring:[600,2400], speed:40},   // 漁船
-    {stage:2, art:5, seats:32, ring:[900,4000], speed:46}    // 大型漁船
+    {stage:0, art:6, seats:8,  ring:[500,1400], speed:34, hold:300,  fuel:5000},   // 木造の小舟
+    {stage:1, art:3, seats:18, ring:[700,2400], speed:40, hold:900,  fuel:9000},   // 漁船
+    {stage:2, art:5, seats:32, ring:[900,3600], speed:46, hold:2500, fuel:16000}   // 大型漁船
   ],
-  fill:[0.6,1.0],     // 1隻にどれだけ乗せるか（席に対する割合）。この幅でばらつかせる
-  max:10,             // NPC船の上限。住民が余りすぎてもこれ以上は出さない
-  perCrew:0.1,        // 漁をしている1人が毎秒何本獲るか（海の濃さ1・竿1本のとき）
-  richPow:0.5,        // 海の濃さの効き。1なら濃さに比例、0なら場所によらない
-  fishSec:[5,11],     // 着いた場所で漁をする秒数
-  step:0.6            // 次の行き先までの角度の幅（rad）。大きくすると島を横切ることがある
+  fill:[0.6,1.0],     // 1隻にどれだけ乗せるか（席に対する割合）
+  max:10,             // NPC船の上限
+  schools:4,          // NPC船1隻のまわりに保つ群れの数。自分の船のまわり（14〜28）より少なく
+  reach:700,          // この距離までの群れを追いかける
+  rest:[3,7],         // 港で休む秒数
+  reserve:1.3,        // 港までの距離のこの倍の燃料を残したら帰る
+  berth:{x0:130, x1:280, y0:-150, y1:150}   // 港の東側の停泊場所（港からの相対 px）
 };
-/* 住民の余りから船団を組み直す。施設を上げたときと読み込んだときに呼ぶ */
+/* 島を横切らないための回り道。まっすぐ行くと陸をかすめるなら、陸の角を1つ経由する */
+function segHitsRect(ax,ay,bx,by,L){
+  if(Math.max(ax,bx)<L.x0||Math.min(ax,bx)>L.x1||Math.max(ay,by)<L.y0||Math.min(ay,by)>L.y1) return false;
+  for(let k=0;k<=24;k++){ const u=k/24, x=ax+(bx-ax)*u, y=ay+(by-ay)*u;
+    if(x>L.x0&&x<L.x1&&y>L.y0&&y<L.y1) return true; }
+  return false;
+}
+function npcRoute(nb,tx,ty){
+  const L0=landRect(), m=nb.b.len/2+30, L={x0:L0.x0-m,y0:L0.y0-m,x1:L0.x1+m,y1:L0.y1+m};
+  if(!segHitsRect(nb.x,nb.y,tx,ty,L)) return [tx,ty];
+  const cs=[[L.x0-4,L.y0-4],[L.x1+4,L.y0-4],[L.x0-4,L.y1+4],[L.x1+4,L.y1+4]];
+  let best=null, bd=1e18;
+  for(const [cx,cy] of cs){
+    if(segHitsRect(nb.x,nb.y,cx,cy,L)) continue;
+    const d=Math.hypot(cx-nb.x,cy-nb.y)+Math.hypot(tx-cx,ty-cy);
+    if(d<bd){ bd=d; best=[cx,cy]; }
+  }
+  return best||[tx,ty];
+}
+/* 住民の余りから船団を組み直す。施設を上げたときと読み込んだときに呼ぶ（港にいるとき） */
 function buildFleet(){
+  for(const nb of S.npcs||[]) if(nb.hold>0) S.money+=Math.round(nb.hold*fishYen());   // 積んでいた分は売っておく
   const surplus=Math.max(0, population()-S.up.crew);
   const avail=NPC.types.filter(t=>t.stage<S.fac.ship);      // 乗り換える前の段階の船だけ
   const R=seeded(surplus*7919+S.fac.ship*31+1);
   const out=[]; let left=avail.length?surplus:0;
-  /* 1隻目は乗り換える直前の船（大型漁船まで）。席の6割に満たない人数でもそれに乗せる。
-     「乗り換えたら前の船が島の人に回る」が必ず見えるように */
-  if(left>0){
-    const T=avail[avail.length-1];
-    const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
-    out.push(makeNpc(T,n,R)); left-=n;
-  }
+  const pick=T=>{ const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
+    out.push(makeNpc(T,n,R,out.length)); left-=n; };
+  if(left>0) pick(avail[avail.length-1]);                    // 1隻目は乗り換える直前の船
   while(left>0 && out.length<NPC.max){
     const fit=avail.filter(t=>t.seats*NPC.fill[0]<=left);
     const pool=fit.length?fit:[avail[0]];
-    const T=pool[Math.floor(R()*pool.length)];
-    const n=Math.min(left, T.seats, Math.max(1, Math.round(T.seats*(NPC.fill[0]+(NPC.fill[1]-NPC.fill[0])*R()))));
-    out.push(makeNpc(T,n,R)); left-=n;
+    pick(pool[Math.floor(R()*pool.length)]);
   }
   S.npcs=out;
 }
-function makeNpc(T,n,R){
-  const b=boats[T.art-1];
-  const a=R()*TAU, r=T.ring[0]+(T.ring[1]-T.ring[0])*R();
-  const nb={T, b, n, x:PORT.x+Math.cos(a)*r, y:PORT.y+Math.sin(a)*r,
-    hd:a+Math.PI/2, face:1, sp:0, state:'fish', t:NPC.fishSec[0]+R()*(NPC.fishSec[1]-NPC.fishSec[0]),
-    tx:0, ty:0, acc:0, bob:R()*TAU, crew:[]};
-  // 釣り座の並べ方は自分の船と同じ（真ん中から両舷交互に）
+function makeNpc(T,n,R,idx){
+  const b=boats[T.art-1], bz=NPC.berth;
+  const bx=PORT.x+bz.x0+(bz.x1-bz.x0)*R(), by=PORT.y+bz.y0+(bz.y1-bz.y0)*((idx*0.37+R()*0.3)%1);
+  const nb={T, b, n, x:bx, y:by, bx, by, hd:0, face:1, sp:0, state:'dock', t:rnd(NPC.rest[0],NPC.rest[1]),
+    tx:bx, ty:by, hold:0, fuel:T.fuel*(1+FAC_EFF.tank*S.fac.tank), bob:R()*TAU, crew:[], tgt:null};
   const ns=b.seatX.length, mid=(ns-1)/2, byC=[];
   for(let i=0;i<ns;i++) byC.push(i);
   byC.sort((p,q)=>Math.abs(p-mid)-Math.abs(q-mid));
   const order=[]; for(const i of byC){ order.push([0,i]); order.push([1,i]); }
+  const rodsPer=FAC_EFF.gear*S.fac.gear;                     // 竿は自分の船と同じ配り方（1人最大3本）
   for(let k=0;k<n && k<order.length;k++){
-    const fm={pal:Math.floor(R()*3), pose:0, pt:0, row:order[k][0], si:order[k][1]};
+    const fm={pal:Math.floor(R()*3), pose:0, pt:0, row:order[k][0], si:order[k][1], cd:rnd(0,.7),
+              rod:Math.min(ROD_MAX, Math.floor(rodsPer)+(R()<rodsPer%1?1:0))};
     fm.lx=b.seatX[fm.si]-b.W/2+(fm.row===1?4:0);
     fm.ly=(fm.row===0?b.railY:b.railY+2)-b.waterY;
     nb.crew.push(fm);
   }
   return nb;
 }
-function npcNext(nb){                // 輪の上を少しずつ回る。大きく跳ぶと島を横切るので角度を絞る
+function npcFuelMax(nb){ return nb.T.fuel*(1+FAC_EFF.tank*S.fac.tank); }
+function npcWander(nb){                                       // 持ち場の輪の中で、次に探しに行く場所
   const cur=Math.atan2(nb.y-PORT.y, nb.x-PORT.x), T=nb.T;
-  const a=cur+rnd(-NPC.step,NPC.step), r=rnd(T.ring[0],T.ring[1]);
+  const a=(nb.state==='out'&&Math.hypot(nb.x-PORT.x,nb.y-PORT.y)<T.ring[0]) ? rnd(-1.2,1.2) : cur+rnd(-0.6,0.6);
+  const r=rnd(T.ring[0],T.ring[1]);
   nb.tx=PORT.x+Math.cos(a)*r; nb.ty=PORT.y+Math.sin(a)*r;
-  nb.state='sail';
 }
 function npcOnScreen(nb){ return Math.abs(nb.x-camX)<VW/2+nb.b.W && Math.abs(nb.y-camY)<VH/2+nb.b.H; }
+/* 自分の船と同じ判定で釣る。竿の下（楕円）にいる魚を、漁師ごとの間隔で1匹ずつ */
+function npcFish(nb,dt){
+  if(nb.hold>=nb.T.hold) return 0;
+  const rx=nb.b.len/2+24, ry=42, up=[], dn=[];
+  for(const s of S.schools){
+    if(Math.abs(s.cx-nb.x)>rx+s.rx*s.k+14 || Math.abs(s.cy-nb.y)>ry+s.rx*s.k+14) continue;
+    const fs=s.fish;
+    for(let i=0;i<fs.length;i++){ const f=fs[i]; if(!f.alive) continue;
+      const ex=(f.wx-nb.x)/rx, ey=(f.wy-nb.y)/ry;
+      if(ex*ex+ey*ey<=1) (f.wy<nb.y?up:dn).push({f,s}); }
+  }
+  if(!up.length && !dn.length) return 0;
+  const vis=npcOnScreen(nb); let got=0;
+  for(const fm of nb.crew){
+    fm.cd-=dt; if(fm.cd>0) continue;
+    const own=fm.row===1?up:dn, other=fm.row===1?dn:up, src=own.length?own:other;
+    if(!src.length){ fm.cd=rnd(.03,.12); continue; }
+    const fx=nb.x+(nb.face<0?-fm.lx:fm.lx);
+    let bi=0, bd=1e9;
+    for(let i=0;i<src.length;i++){ const d=Math.abs(src[i].f.wx-fx)+Math.abs(src[i].f.wy-nb.y)*0.55; if(d<bd){bd=d;bi=i;} }
+    const o=src[bi]; src.splice(bi,1);
+    o.f.alive=false; o.s.alive--; S.totalFish--; nb.hold++; got++;
+    fm.cd=(1/(BARE*Math.pow(ROD,fm.rod||0)))*rnd(.82,1.18);
+    if(vis){ fm.pose=1; fm.pt=.28;
+      if(S.pops.length<64){ const sp=fsprite(fm), tx=nb.face<0?-(fm.lx+sp.tip.x):(fm.lx+sp.tip.x);
+        S.pops.push({x:nb.x+tx, y:nb.y+fm.ly+sp.tip.y, t:0, fv:false}); } }
+    if(nb.hold>=nb.T.hold) break;
+  }
+  return got;
+}
+function npcSteer(nb,dt,tx,ty,speed){
+  const [wx,wy]=npcRoute(nb,tx,ty);
+  let dh=Math.atan2(wy-nb.y,wx-nb.x)-nb.hd;
+  while(dh>Math.PI) dh-=TAU; while(dh<-Math.PI) dh+=TAU;
+  nb.hd+=clamp(dh,-1.4*dt,1.4*dt);
+  nb.sp+=(speed-nb.sp)*(1-Math.pow(0.1,dt));
+  return Math.hypot(tx-nb.x,ty-nb.y);
+}
 function updateNpcs(dt){
-  const atSea=S.phase==='sea', rodF=1+FAC_EFF.gear*S.fac.gear;
+  if(S.phase!=='sea') return;                                 // 自分が航海に出ているあいだだけ動く
   for(const nb of S.npcs){
     nb.bob+=dt*2.4;
     for(const fm of nb.crew) if(fm.pose===1){ fm.pt-=dt; if(fm.pt<=0) fm.pose=0; }
-    if(nb.state==='sail'){
-      const dx=nb.tx-nb.x, dy=nb.ty-nb.y, d=Math.hypot(dx,dy);
-      let dh=Math.atan2(dy,dx)-nb.hd;
-      while(dh>Math.PI) dh-=TAU; while(dh<-Math.PI) dh+=TAU;
-      nb.hd+=clamp(dh,-1.2*dt,1.2*dt);
-      nb.sp+=(nb.T.speed-nb.sp)*(1-Math.pow(0.1,dt));
-      if(d<12){ nb.state='fish'; nb.t=rnd(NPC.fishSec[0],NPC.fishSec[1]); }
-    }else{
-      nb.sp*=Math.pow(0.2,dt);
-      nb.t-=dt;
-      if(atSea){
-        nb.acc+=dt*nb.n*NPC.perCrew*rodF*Math.pow(seaRichAt(nb.x,nb.y),NPC.richPow);
-        const k=nb.acc|0; nb.acc-=k;
-        if(k>0){ S.hold+=k; S.score+=k; S.npcFish=(S.npcFish||0)+k; npcCatchFx(nb,k); }
+    const home=Math.hypot(nb.x-nb.bx, nb.y-nb.by);
+    if(nb.state==='dock'){
+      nb.sp*=Math.pow(0.1,dt); nb.t-=dt;
+      if(nb.t<=0){ nb.state='out'; npcWander(nb); }
+    }else if(nb.state==='home'){
+      const d=npcSteer(nb,dt,nb.bx,nb.by,nb.T.speed*(home<80?0.5:1));
+      if(d<10){                                               // 着いた。売って給油して休む
+        if(nb.hold>0){ const y=Math.round(nb.hold*fishYen()); S.money+=y; S.npcYen=(S.npcYen||0)+y; S.npcFish=(S.npcFish||0)+nb.hold; }
+        nb.hold=0; nb.fuel=npcFuelMax(nb); nb.state='dock'; nb.t=rnd(NPC.rest[0],NPC.rest[1]); nb.sp=0; nb.tgt=null;
       }
-      if(nb.t<=0) npcNext(nb);
+    }else{                                                    // 'out'：探す・追う・釣る
+      let tgt=nb.tgt;
+      if(!tgt || tgt.alive<8 || !S.schools.includes(tgt) || Math.hypot(tgt.cx-nb.x,tgt.cy-nb.y)>NPC.reach*1.4){
+        tgt=null; let bd=NPC.reach;
+        for(const s of S.schools){ if(s.alive<8) continue;
+          const r=Math.hypot(s.cx-PORT.x,s.cy-PORT.y); if(r>nb.T.ring[1]+300) continue;
+          const d=Math.hypot(s.cx-nb.x,s.cy-nb.y)-s.rx*s.k; if(d<bd){bd=d;tgt=s;} }
+        nb.tgt=tgt;
+      }
+      if(tgt){
+        const d=Math.hypot(tgt.cx-nb.x,tgt.cy-nb.y)-tgt.rx*tgt.k;
+        npcSteer(nb,dt,tgt.cx,tgt.cy,nb.T.speed*(d<20?0.45:1));   // 乗ったら緩める
+      }else if(npcSteer(nb,dt,nb.tx,nb.ty,nb.T.speed)<30) npcWander(nb);
+      npcFish(nb,dt);
+      if(nb.hold>=nb.T.hold || nb.fuel<=home*FUEL.perPx*NPC.reserve) nb.state='home';
+    }
+    if(nb.state!=='dock'){                                    // 燃料は自分の船と同じく走った距離と停船で減る
+      nb.fuel-=nb.sp*dt*FUEL.perPx + nb.T.speed*FUEL.perPx*FUEL.idleRate*dt;
+      if(nb.fuel<=0){ nb.x=nb.bx; nb.y=nb.by; nb.state='home'; nb.fuel=0; }   // 切れたら港へ曳かれて戻る
     }
     nb.x+=Math.cos(nb.hd)*nb.sp*dt; nb.y+=Math.sin(nb.hd)*nb.sp*dt;
-    const c=Math.cos(nb.hd); if(Math.abs(c)>0.2) nb.face=c>0?1:-1;
-  }
-}
-/* 画面に映っているときだけ、竿を上げて「+1」を出す */
-function npcCatchFx(nb,k){
-  if(!npcOnScreen(nb) || !nb.crew.length) return;
-  for(let i=0;i<Math.min(k,3);i++){
-    const fm=nb.crew[rint(0,nb.crew.length-1)];
-    fm.pose=1; fm.pt=.28;
-    if(S.pops.length<64){
-      const sp=fsprite(fm), tx=nb.face<0?-(fm.lx+sp.tip.x):(fm.lx+sp.tip.x);
-      S.pops.push({x:nb.x+tx, y:nb.y+fm.ly+sp.tip.y, t:0, fv:false});
-    }
+    const c=Math.cos(nb.hd); if(nb.sp>3 && Math.abs(c)>0.2) nb.face=c>0?1:-1;
   }
 }
 
@@ -2821,7 +2886,7 @@ function drawNpcs(){
     ctx.drawImage(b.cv,-Math.round(b.W/2),-b.waterY);
     for(const fm of nb.crew) if(fm.row===0) drawFisher(fm);
     ctx.restore();
-    if(fishing && nb.state==='fish'){               // 漁をしているあいだだけ糸を垂らす
+    if(fishing && nb.state==='out' && nb.tgt && Math.hypot(nb.tgt.cx-nb.x,nb.tgt.cy-nb.y)<nb.tgt.rx*nb.tgt.k+40){   // 群れに乗っているあいだだけ糸を垂らす
       ctx.fillStyle='rgba(216,232,240,.45)';
       for(const fm of nb.crew){
         if(fm.pose===1) continue;
@@ -3566,6 +3631,7 @@ function paintPort(){
   elPMoney.textContent=yen(S.money);
   const L=S.landed;
   elPLog.innerHTML=(L?('水揚げ <b>'+fmt(L.fish)+'</b>本  →  <em>'+yen(L.yen)+'</em>\n'):'')
+    +(S.npcYen?('NPC船の水揚げ  <em>'+yen(S.npcYen)+'</em>\n'):'')
     +'人口 <b>'+population()+'</b>人  乗船 <b>'+S.up.crew+'/'+stat.seats()+'</b>\n'
     +'売値 <b>'+yen(fishYen())+'</b>/本  満タンで <b>'+fmtDist(fuelMax()*M_PER_PX)+'</b>'
     +nextShipLine();

@@ -1643,10 +1643,12 @@ function seaRich(){ return seaRichAt(S.boat.x, S.boat.y); }
 /* 上の倍率を 0〜1 に直したもの。群れの数や密度など、青天井にしたくないものに使う */
 function seaT(){ return Math.log2(seaRich())/Math.log2(SEA.richCap); }
 
+const SHIP_SPD_DROP=0.04, SHIP_TURN_DROP=0.06;   // 小舟1.00 → 漁船0.92/0.88 → 大型0.84/0.76 → タイタニック0.80/0.70 → 大和0.76/0.64
 const stat = {
   rate:(u)=>stat.power(u)/Math.max(1,rodSplit(u).n),   // 1人あたりの平均。表示には使わない
-  speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1+0.045*(ship().lv-1));},   // 絵の番号ではなく船の格
-  turn:(u)=>{u=u||S.up; return 5.0*Math.pow(1.10,u.engine)*(1-0.03*(ship().lv-1));},
+  /* 大きい船ほど最高速も旋回も少しずつ落ちる（格1段ごとに SHIP_SPD_DROP / SHIP_TURN_DROP） */
+  speed:(u)=>{u=u||S.up; return 52*Math.pow(1.12,u.engine)*(1-SHIP_SPD_DROP*(ship().lv-1));},
+  turn:(u)=>{u=u||S.up; return 5.0*Math.pow(1.10,u.engine)*(1-SHIP_TURN_DROP*(ship().lv-1));},
   sonar:(u)=>250*Math.pow(1.32,(u||S.up).sonar-1),
   lureR:(u)=>{u=u||S.up; return u.lure===0?0:150+70*u.lure;},
   lureF:()=>S.up.lure*3.4,
@@ -2166,9 +2168,11 @@ function dropChest(){                            // 魚探を積んだ瞬間に1
    積荷と違って燃料切れで半値にならないぶん、拾いに行く価値がある。
    当たりの重みは一本釣りの 70/23/7% をそのまま流用した */
 const CHEST_YEN=[2000,6000,15000];
+/* 船の段階（造船所Lv）ごとの宝箱の倍率。固定額だと序盤しか嬉しくないので、稼ぎの桁に合わせて増やす */
+const CHEST_MUL=[1,8,40,150,300];
 function openChest(){
   const r=Math.random(), i = r<.70?0:(r<.93?1:2);
-  const n=CHEST_YEN[i];
+  const n=CHEST_YEN[i]*CHEST_MUL[S.fac.ship];
   S.money+=n;
   saveGame();                                   // 航海の途中で閉じても消えないように
   bang('chest'); sfxChest();

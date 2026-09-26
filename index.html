@@ -165,6 +165,11 @@
     display:flex; flex-direction:column; align-items:center; gap:.3em; text-align:center;
     opacity:0; transition:opacity .3s}
   .toast.on{opacity:1}
+  .haztag{position:absolute; left:50%; top:24%; transform:translateX(-50%); opacity:0; pointer-events:none; white-space:nowrap;
+    padding:.25em .9em; background:rgba(3,18,29,.72); border:1px solid var(--line); transition:opacity .25s}
+  .haztag.on{opacity:1}
+  .haztag b{color:var(--gold); letter-spacing:.15em; margin-right:.6em}
+  .haztag span{color:var(--foam); font-size:.86em}
   .toast .hd{font-size:1.1em; color:var(--gold); letter-spacing:.2em}
   .toast .it{font-size:.85em; color:var(--foam); background:rgba(3,18,29,.7); padding:.15em .7em; border:1px solid var(--line)}
 
@@ -390,6 +395,7 @@
       <div class="fvbig disp" id="fvbig">入れ食い</div>
       <div class="haul disp num" id="haul"></div>
 
+      <div class="haztag" id="haztag"></div>
       <div class="toast" id="toast"><div class="hd">宝箱</div><div id="toastitems"></div></div>
     </div>
 
@@ -1356,7 +1362,7 @@ const S={
   fvT:0, fvRound:0, fvLock:0, fvPulse:0, fever:false, chain:0,
   gear:'pole', net:{t:0, phase:'wait', held:[], flash:0}, haul:null,
   phase:'port', money:0, shipIdx:0, hold:0, fuel:0, dry:false, voyage:0, camK:1,
-  land:null, parts2:[], toriT:20, ret:null, npcs:[], npcFish:0, npcYen:0,
+  land:null, parts2:[], toriT:20, ret:null, npcs:[], npcFish:0, npcYen:0, storms:[], stormT:40, hazHit:null,
   fac:{ship:0, engine:0, gear:0, fish:0, tank:0},
   trawl:{x:0,y:0,vx:0,vy:0,hd:0}
 };
@@ -1835,6 +1841,216 @@ function spawnToriBoil(dt){
     }
   }
 }
+/* ================= 海の難所 =================
+   急潮・時化は海に固定、嵐・台風は航海中に湧いて流れていく。
+   船が小さいと押し戻されて入れない。中は魚が濃い（抜けられるようになったご褒美）。
+   need は造船所のLv（0小舟 1漁船 2大型漁船 3タイタニック 4戦艦大和）。これ以上なら素通りできる */
+const HAZ={
+  kinds:{
+    current:{need:1, name:'急潮', bonus:2},
+    rough:  {need:2, name:'時化', bonus:3},
+    storm:  {need:3, name:'嵐',   bonus:4},
+    typhoon:{need:4, name:'台風', bonus:6}
+  },
+  push:1.25,          // 押し戻す速さ。倍速の最高速に対する倍率。1を超えると奥へは進めない
+  ramp:0.35,          // 縁から奥へこの割合までで押し戻しが最大になる（縁ほど弱い）
+  cell:1400,          // 固定の難所を置く升目（px）。1升に1つまで
+  chance:0.55,        // 1升に難所がある確率
+  safe:650,           // 難所の縁が港からこの距離より内に来ないようにする
+  roughFrom:2600,     // これより遠いと時化が混ざる
+  roughShare:0.55,    // その先で時化になる割合
+  inner:{r:1350, n:5},   // 港を囲む急潮の切れた輪。小舟のうちに「あの先へ行けない」を見せる。輪の切れ目は通れる
+  current:{len:[380,700], wid:[90,140], flow:70},   // 急潮の半長・半幅（px）、流れの見た目の速さ
+  rough:{r:[240,420]},
+  storm:{first:[25,60], every:[50,100], dist:[700,1100], r:[280,440], drift:[12,24],
+         life:[90,150], grow:8, typhoonShare:0.35, typhoonR:1.5, schools:3}
+};
+const hazCells=new Map();
+function hazMake(kind,x,y,a,b,ang,R){
+  const z={kind, K:HAZ.kinds[kind], x,y,a,b,ang, c:Math.cos(ang), s:Math.sin(ang), pts:[]};
+  const n=kind==='current'?Math.min(420,Math.round(a*b/260)) : kind==='rough'?Math.min(360,Math.round(a*b/450)) : Math.min(kind==='typhoon'?220:70, Math.round(a*b/(kind==='typhoon'?900:2400)));
+  for(let i=0;i<n;i++) z.pts.push({u:R()*2-1, v:R()*2-1, l:4+Math.floor(R()*9), sp:.7+R()*.6, ph:R()*TAU});
+  return z;
+}
+function hazCell(i,j){
+  const key=i+','+j;
+  if(hazCells.has(key)) return hazCells.get(key);
+  const R=seeded((i*73856093)^(j*19349663)^0x5eed), C=HAZ.cell;
+  let z=null;
+  if(R()<HAZ.chance){
+    const x=(i+0.2+0.6*R())*C, y=(j+0.2+0.6*R())*C, r=Math.hypot(x-PORT.x,y-PORT.y);
+    const kind=(r>HAZ.roughFrom && R()<HAZ.roughShare)?'rough':'current';
+    const H=HAZ[kind], a=kind==='current'?rnd2(R,H.len):rnd2(R,H.r), b=kind==='current'?rnd2(R,H.wid):a*(0.7+0.3*R());
+    if(r-a>HAZ.safe && Math.abs(r-HAZ.inner.r)>a+250){ z=hazMake(kind,x,y,a,b,R()*TAU,R); if(kind==='current'&&R()<.5){ z.c=-z.c; z.s=-z.s; z.ang+=Math.PI; } }
+  }
+  hazCells.set(key,z); return z;
+}
+let hazInner=null;
+function hazInnerZones(){
+  if(hazInner) return hazInner;
+  const R=seeded(0x1a2b), I=HAZ.inner, H=HAZ.current; hazInner=[];
+  for(let k=0;k<I.n;k++){
+    const an=(k+0.2+0.6*R())*TAU/I.n, r=I.r*(0.9+0.2*R());
+    const z=hazMake('current', PORT.x+Math.cos(an)*r, PORT.y+Math.sin(an)*r, rnd2(R,H.len), rnd2(R,H.wid), an+Math.PI/2+(R()-.5)*0.4, R);
+    if(R()<.5){ z.c=-z.c; z.s=-z.s; z.ang+=Math.PI; }
+    hazInner.push(z);
+  }
+  return hazInner;
+}
+function rnd2(R,[lo,hi]){ return lo+(hi-lo)*R(); }
+function hazNear(x,y,out){
+  out.length=0;
+  const C=HAZ.cell, i0=Math.floor(x/C), j0=Math.floor(y/C);
+  for(let j=j0-1;j<=j0+1;j++) for(let i=i0-1;i<=i0+1;i++){ const z=hazCell(i,j); if(z) out.push(z); }
+  if(Math.hypot(x-PORT.x,y-PORT.y)<HAZ.inner.r+1800) for(const z of hazInnerZones()) out.push(z);
+  for(const z of S.storms) out.push(z);
+  return out;
+}
+function hazK(z){ return z.life ? clamp(Math.min(z.age/HAZ.storm.grow,(z.life-z.age)/HAZ.storm.grow),0,1) : 1; }
+/* 楕円の中なら {d:縁からの深さ0〜1, nx,ny:外向き} */
+function hazIn(z,x,y){
+  const k=hazK(z); if(k<=0) return null;
+  const dx=x-z.x, dy=y-z.y, A=z.a*k, B=z.b*k;
+  if(Math.abs(dx)>A+B||Math.abs(dy)>A+B) return null;
+  const u=(dx*z.c+dy*z.s)/A, v=(-dx*z.s+dy*z.c)/B, q=Math.hypot(u,v);
+  if(q>=1) return null;
+  let gx=u/A, gy=v/B; const gl=Math.hypot(gx,gy)||1; gx/=gl; gy/=gl;
+  if(q<1e-3){ gx=0; gy=1; }
+  return {z, d:1-q, nx:gx*z.c-gy*z.s, ny:gx*z.s+gy*z.c};
+}
+const _hz=[];
+/* tier の船が入れない難所のうち、いちばん深く入っているもの */
+function hazBlock(x,y,tier){
+  let best=null;
+  for(const z of hazNear(x,y,_hz)){ if(z.K.need<=tier) continue; const h=hazIn(z,x,y); if(h&&(!best||h.d>best.d)) best=h; }
+  return best;
+}
+function hazBonus(x,y){
+  let m=1; for(const z of hazNear(x,y,_hz)) if(z.K.bonus>m && hazIn(z,x,y)) m=z.K.bonus;
+  return m;
+}
+/* 押し戻す向き。急潮は流れに乗せて吐き出し、台風は渦に巻いて外へ放る */
+function hazPushVec(h){
+  let px=h.nx, py=h.ny;
+  if(h.z.kind==='current'){ px=px*0.6+h.z.c*0.8; py=py*0.6+h.z.s*0.8; }
+  else if(h.z.kind==='typhoon'){ px=px*0.8-h.ny*0.6; py=py*0.8+h.nx*0.6; }
+  const l=Math.hypot(px,py)||1; return [px/l, py/l];
+}
+function spawnStorm(){
+  const B=S.boat, H=HAZ.storm;
+  for(let tries=0;tries<12;tries++){
+    const typ=Math.random()<H.typhoonShare, kind=typ?'typhoon':'storm';
+    const r=rnd(H.r[0],H.r[1])*(typ?H.typhoonR:1);
+    const a=rnd(0,TAU), d=rnd(H.dist[0],H.dist[1])+r;
+    const x=B.x+Math.cos(a)*d, y=B.y+Math.sin(a)*d;
+    if(Math.hypot(x-PORT.x,y-PORT.y)-r<HAZ.safe) continue;
+    const z=hazMake(kind,x,y,r,r*0.8,0,Math.random);
+    const da=rnd(0,TAU), sp=rnd(H.drift[0],H.drift[1]);
+    Object.assign(z,{vx:Math.cos(da)*sp, vy:Math.sin(da)*sp, age:0, life:rnd(H.life[0],H.life[1]), flash:0});
+    S.storms.push(z);
+    for(let k=0;k<H.schools;k++){                          // 中に濃い群れを抱えて来る
+      const ra=rnd(0,TAU), rr=rnd(0,0.55)*r, sx=x+Math.cos(ra)*rr, sy=y+Math.sin(ra)*rr*0.8;
+      const n=Math.round(rnd(50,150)*seaRichAt(sx,sy)*z.K.bonus*(1+TUNE.lureSchoolSize*(S.up.lure-1)));
+      S.schools.push(makeSchool(sx,sy,n)); S.totalFish+=n;
+    }
+    return z;
+  }
+  return null;
+}
+function updateHaz(dt){
+  if(S.hazHit) { S.hazHit.t-=dt; if(S.hazHit.t<=0) S.hazHit=null; }
+  if(S.phase!=='sea') return;
+  S.stormT-=dt;
+  if(S.stormT<=0){ spawnStorm(); S.stormT=rnd(HAZ.storm.every[0],HAZ.storm.every[1]); }
+  for(let i=S.storms.length-1;i>=0;i--){
+    const z=S.storms[i]; z.age+=dt;
+    const pd=Math.hypot(z.x-PORT.x,z.y-PORT.y);
+    if(pd-z.a<HAZ.safe){ const k=dt*20/Math.max(1,pd); z.vx+=(z.x-PORT.x)*k; z.vy+=(z.y-PORT.y)*k; }   // 港には寄せない
+    z.x+=z.vx*dt; z.y+=z.vy*dt;
+    if(z.flash>0) z.flash-=dt;
+    else if(Math.random()<dt*0.12){ z.flash=0.14;
+      if(Math.hypot(z.x-camX,z.y-camY)<z.a+VW) tone(70,.5,'sawtooth',.025,.5); }
+    if(z.age>=z.life || Math.hypot(z.x-S.boat.x,z.y-S.boat.y)>3500) S.storms.splice(i,1);
+  }
+}
+/* 船をはじく。自分の船とNPC船で共通。maxSp はその船の最高速 */
+function hazRepel(o,tier,maxSp,dt){
+  const h=hazBlock(o.x,o.y,tier); if(!h) return null;
+  const [px,py]=hazPushVec(h), k=HAZ.push*maxSp*Math.min(1,h.d/HAZ.ramp);
+  o.x+=px*k*dt; o.y+=py*k*dt;
+  return h;
+}
+function hazVisible(z,m){ const k=hazK(z), r=Math.max(z.a,z.b)*k+m; return k>0 && Math.abs(z.x-camX)<VW/2+r && Math.abs(z.y-camY)<VH/2+r; }
+const HAZ_TINT={current:[120,220,228,.16], rough:[4,18,30,.34], storm:[14,20,32,.46], typhoon:[10,14,26,.52]};
+function hazTint(z,ox,oy,col,edge){
+  const k=hazK(z), [r,g,b,al]=col;
+  ctx.save(); ctx.translate(z.x+ox,z.y+oy); ctx.rotate(z.ang); ctx.scale(z.a*k,z.b*k);
+  const gr=ctx.createRadialGradient(0,0,0,0,0,1);
+  gr.addColorStop(0,`rgba(${r},${g},${b},${(al*(edge?0.45:1)).toFixed(3)})`);
+  gr.addColorStop(edge?0.9:0.8,`rgba(${r},${g},${b},${al})`);
+  gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+  ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(0,0,1,0,TAU); ctx.fill(); ctx.restore();
+}
+/* 海面の下地：色と、急潮の流れ筋・時化の白波 */
+function drawHazFloor(){
+  const ox=OX, oy=OY, t=S.t;
+  for(const z of hazNear(camX,camY,_hz)){
+    if(!hazVisible(z,40)) continue;
+    const k=hazK(z);
+    hazTint(z,ox,oy,HAZ_TINT[z.kind], z.kind==='current'||z.kind==='rough');
+    if(z.kind==='current'){
+      const A=z.a*k, B=z.b*k, fl=HAZ.current.flow*t/A;
+      for(const p of z.pts){
+        const u=((p.u+1+fl*p.sp)%2+2)%2-1, q=u*u+p.v*p.v; if(q>=1) continue;
+        const wx=z.x+u*A*z.c-p.v*B*z.s, wy=z.y+u*A*z.s+p.v*B*z.c;
+        const sx=wx+ox, sy=wy+oy; if(sx<-10||sx>VW+10||sy<-10||sy>VH+10) continue;
+        ctx.fillStyle=`rgba(214,248,252,${(0.85*(1-q*q)).toFixed(2)})`;
+        for(let i=0;i<p.l;i++) ctx.fillRect(Math.round(sx-z.c*i), Math.round(sy-z.s*i), 1, 1);
+      }
+    }else if(z.kind==='rough'){
+      ctx.fillStyle='rgba(226,240,246,.6)';
+      for(const p of z.pts){
+        const w=Math.sin(t*1.9*p.sp+p.ph); if(w<0.2) continue;
+        const q=p.u*p.u+p.v*p.v; if(q>=1) continue;
+        const sx=Math.round(z.x+(p.u*z.a*z.c-p.v*z.b*z.s)+ox), sy=Math.round(z.y+(p.u*z.a*z.s+p.v*z.b*z.c)+oy+Math.sin(t*2+p.ph)*2);
+        if(sx<-4||sx>VW+4||sy<-4||sy>VH+4) continue;
+        ctx.globalAlpha=Math.min(1,(w-0.2)*2)*(1-q*q);
+        ctx.fillRect(sx-3,sy+1,1,1); ctx.fillRect(sx-2,sy,2,1); ctx.fillRect(sx,sy-1,2,1); ctx.fillRect(sx+2,sy,1,1);
+      }
+      ctx.globalAlpha=1;
+    }
+  }
+}
+/* 嵐と台風は船の上に被せる：暗がり・雨・渦・稲光 */
+function drawHazSky(){
+  const ox=OX, oy=OY, t=S.t;
+  for(const z of S.storms){
+    if(!hazVisible(z,40)) continue;
+    const k=hazK(z), A=z.a*k, B=z.b*k;
+    hazTint(z,ox,oy,[10,16,26,.22],false);
+    const rot=t*(z.kind==='typhoon'?0.35:0.06);
+    for(const p of z.pts){                                   // 雲のかたまり。台風は渦に沿って並べて回す
+      let u=p.u, v=p.v;
+      if(z.kind==='typhoon'){ const s2=(p.ph/TAU)*0.9+0.1, an=rot+s2*5.5+Math.floor(p.sp*3.99-2.8)*TAU/3; u=Math.cos(an)*s2; v=Math.sin(an)*s2; }
+      else { const c=Math.cos(rot), s1=Math.sin(rot); [u,v]=[u*c-v*s1, u*s1+v*c]; }
+      const q=u*u+v*v; if(q>=1) continue;
+      const sx=Math.round(z.x+u*A+ox), sy=Math.round(z.y+v*B+oy), w=6+p.l*1.4, h=3+(p.l>>2);
+      if(sx<-w||sx>VW+w||sy<-h||sy>VH+h) continue;
+      ctx.fillStyle=`rgba(${z.kind==='typhoon'?'214,222,232':'150,162,178'},${(0.34*(1-q)).toFixed(2)})`;
+      ctx.fillRect(sx-(w>>1),sy-(h>>1),w,h); ctx.fillRect(sx-(w>>1)+2,sy-(h>>1)-1,w-4,h+2);
+    }
+    const n=REDUCE?20:Math.min(160, Math.round(A*B/1200));  // 雨
+    ctx.fillStyle='rgba(190,210,228,.45)';
+    for(let i=0;i<n;i++){
+      const an=Math.random()*TAU, rr=Math.sqrt(Math.random());
+      const sx=Math.round(z.x+Math.cos(an)*A*rr+ox), sy=Math.round(z.y+Math.sin(an)*B*rr+oy);
+      if(sx<0||sx>VW||sy<0||sy>VH) continue;
+      for(let j=0;j<4;j++) ctx.fillRect(sx-(j>>1),sy+j,1,1);
+    }
+    if(z.flash>0 && !REDUCE) hazTint(z,ox,oy,[220,234,255,.28],false);
+  }
+}
+
 /* ax,ay のまわりに群れを1つ湧かせる。濃さはその場所の港からの距離で決まる */
 function spawnSchoolNear(ax,ay){
   const rich=seaRichAt(ax,ay), p=Math.log2(rich)/Math.log2(SEA.richCap);
@@ -1844,9 +2060,9 @@ function spawnSchoolNear(ax,ay){
   const a=rnd(0,TAU), d=schoolRadius(n)+rnd(290,520);
   const sxw=ax+Math.cos(a)*d, syw=ay+Math.sin(a)*d;
   if(Math.hypot(sxw-PORT.x,syw-PORT.y)<SEA.portClear+schoolRadius(n)) return;   // 港の足元は空
-  const sc=makeSchool(sxw, syw, n);
+  const sc=makeSchool(sxw, syw, Math.round(n*hazBonus(sxw,syw)));   // 難所の中は濃い
   sc.rx*=1-(1-SEA.tightMax)*p; sc.ry*=1-(1-SEA.tightMax)*p;   // 沖ほど密＝漁獲効率
-  S.schools.push(sc); S.totalFish+=n;
+  S.schools.push(sc); S.totalFish+=sc.alive;
 }
 function manageWorld(dt){
   const B=S.boat, p=seaT();   // 時間ではなく港からの距離。遠いほど濃い海になる
@@ -2401,6 +2617,7 @@ function departPort(){
   hidePort();
   S.voyage++;
   S.npcYen=0;
+  S.storms.length=0; S.stormT=rnd(HAZ.storm.first[0],HAZ.storm.first[1]);
   S.phase='departing';
   S.toriT=rnd(TORI.first[0],TORI.first[1]);
   S.landed=null;
@@ -2490,8 +2707,11 @@ function npcFuelMax(nb){ return nb.T.fuel*(1+FAC_EFF.tank*S.fac.tank); }
 function npcWander(nb){                                       // 持ち場の輪の中で、次に探しに行く場所
   const cur=Math.atan2(nb.y-PORT.y, nb.x-PORT.x), T=nb.T;
   const a=(nb.state==='out'&&Math.hypot(nb.x-PORT.x,nb.y-PORT.y)<T.ring[0]) ? rnd(-1.2,1.2) : cur+rnd(-0.6,0.6);
-  const r=rnd(T.ring[0],T.ring[1]);
-  nb.tx=PORT.x+Math.cos(a)*r; nb.ty=PORT.y+Math.sin(a)*r;
+  for(let k=0;k<8;k++){
+    const r=rnd(T.ring[0],T.ring[1]), aa=a+(k?rnd(-1,1)*k*0.3:0);
+    nb.tx=PORT.x+Math.cos(aa)*r; nb.ty=PORT.y+Math.sin(aa)*r;
+    if(!hazBlock(nb.tx,nb.ty,T.stage)) break;               // 入れない難所の中は選ばない
+  }
 }
 function npcOnScreen(nb){ return Math.abs(nb.x-camX)<VW/2+nb.b.W && Math.abs(nb.y-camY)<VH/2+nb.b.H; }
 /* 自分の船と同じ判定で釣る。竿の下（楕円）にいる魚を、漁師ごとの間隔で1匹ずつ */
@@ -2525,6 +2745,7 @@ function npcFish(nb,dt){
   return got;
 }
 function npcSteer(nb,dt,tx,ty,speed){
+  if(nb.detour){ nb.detour.t-=dt; if(nb.detour.t<=0||Math.hypot(nb.detour.x-nb.x,nb.detour.y-nb.y)<30) nb.detour=null; else { tx=nb.detour.x; ty=nb.detour.y; } }
   const [wx,wy]=npcRoute(nb,tx,ty);
   let dh=Math.atan2(wy-nb.y,wx-nb.x)-nb.hd;
   while(dh>Math.PI) dh-=TAU; while(dh<-Math.PI) dh+=TAU;
@@ -2551,7 +2772,7 @@ function updateNpcs(dt){
       let tgt=nb.tgt;
       if(!tgt || tgt.alive<8 || !S.schools.includes(tgt) || Math.hypot(tgt.cx-nb.x,tgt.cy-nb.y)>NPC.reach*1.4){
         tgt=null; let bd=NPC.reach;
-        for(const s of S.schools){ if(s.alive<8) continue;
+        for(const s of S.schools){ if(s.alive<8 || hazBlock(s.cx,s.cy,nb.T.stage)) continue;
           const r=Math.hypot(s.cx-PORT.x,s.cy-PORT.y); if(r>nb.T.ring[1]+300) continue;
           const d=Math.hypot(s.cx-nb.x,s.cy-nb.y)-s.rx*s.k; if(d<bd){bd=d;tgt=s;} }
         nb.tgt=tgt;
@@ -2568,6 +2789,11 @@ function updateNpcs(dt){
       if(nb.fuel<=0){ nb.x=nb.bx; nb.y=nb.by; nb.state='home'; nb.fuel=0; }   // 切れたら港へ曳かれて戻る
     }
     nb.x+=Math.cos(nb.hd)*nb.sp*dt; nb.y+=Math.sin(nb.hd)*nb.sp*dt;
+    if(hazRepel(nb, nb.T.stage, nb.T.speed*NAV_BOOST, dt)){   // 入れない難所にぶつかったら、しばらく横へ逃げる
+      nb.stuck=(nb.stuck||0)+dt;
+      if(nb.stuck>2){ nb.stuck=0; nb.tgt=null; const a=nb.hd+(Math.random()<.5?1:-1)*Math.PI/2;
+        nb.detour={x:nb.x+Math.cos(a)*450, y:nb.y+Math.sin(a)*450, t:6}; }
+    }else nb.stuck=0;
     const c=Math.cos(nb.hd); if(nb.sp>3 && Math.abs(c)>0.2) nb.face=c>0?1:-1;
   }
 }
@@ -2590,6 +2816,8 @@ function updateBoat(dt){
   B.sp+=(target-B.sp)*(1-Math.pow(target>B.sp?BOAT_ACC:BOAT_DEC, dt));   // 止まるときだけ粘る
   B.vx=Math.cos(B.hd)*B.sp; B.vy=Math.sin(B.hd)*B.sp;
   B.x+=B.vx*dt; B.y+=B.vy*dt;
+  const hz=hazRepel(B, S.fac.ship, sp*NAV_BOOST, dt);   // 船が小さいと難所に押し戻される
+  if(hz){ S.hazHit={z:hz.z, t:1.4}; if(S.shake<0.14) S.shake=0.14; }
   keepOffLand();
   if(Math.abs(B.vx)>4) B.face=B.vx>0?1:-1;
   B.bob+=dt*2.4;
@@ -3164,8 +3392,8 @@ function draw(){
   }
   setCam();
   if(sx||sy) ctx.setTransform(1,0,0,1,sx,sy);
-  drawSea(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
-  drawNpcs(); drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawLanding();
+  drawSea(); drawHazFloor(); drawPort(); drawPortRing(); drawSchools(); drawBoil(); drawChests(); drawRings(); drawWake(); drawNet(); drawTrawl();
+  drawNpcs(); drawBoat(); drawSpray(); drawLines(); drawPops(); drawGulls(); drawHazSky(); drawLanding();
   if(sx||sy) ctx.setTransform(1,0,0,1,0,0);
   drawSpots(); drawPortArrow(); drawBurst(); drawStick();
   const ra=retAlpha();
@@ -3346,7 +3574,12 @@ const elFvBadge=document.getElementById('fvbadge'), elFvBar=document.getElementB
 const elFvBig=document.getElementById('fvbig');
 const elFvRound=document.getElementById('fvround');
 const elFuelFill=document.getElementById('fuelfill');
+const elHaz=document.getElementById('haztag');
+let hazShown='';
 function updateHUD(){
+  { const h=S.phase==='sea'&&S.hazHit; elHaz.classList.toggle('on',!!h);
+    if(h){ const key=h.z.kind+S.fac.ship; if(key!==hazShown){ hazShown=key;
+      elHaz.innerHTML='<b>'+h.z.K.name+'</b><span>'+shipLabel(h.z.K.need)+'なら抜けられる</span>'; } } }
   elScore.style.transform = S.pop>0.01 ? 'scale('+(1+0.26*S.pop)+')' : '';
   const playing=S.phase==='sea';
   // 縁の赤みもバーと同じ時計。こちらは竿の間隔で明滅しないよう頭を落としてある
@@ -3887,7 +4120,7 @@ function tick(now){
     updateVoyage(dt);
     updateCam(dt);
     updateTori(dt);
-    updateNpcs(dt);
+    updateNpcs(dt); updateHaz(dt);
     if(S.phase==='returning') updateReturn(dt);
     if(S.phase==='landing') updateLanding(dt);
     if(S.parts2.length) updateParts2(dt);
